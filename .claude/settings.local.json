@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -L -o sqlite-amalgamation.zip \"https://www.sqlite.org/2024/sqlite-amalgamation-3470200.zip\" --max-time 60)",
+      "Bash(powershell -Command \"Expand-Archive -Path sqlite-amalgamation.zip -DestinationPath . -Force\")",
+      "Bash(where openspec *)",
+      "Bash(openspec new *)",
+      "Bash(openspec status *)",
+      "Bash(openspec instructions *)",
+      "Bash(powershell -Command \"[System.Text.Encoding]::Default.GetString\\([System.IO.File]::ReadAllBytes\\('D:\\\\MyWorks\\\\VisualStudio\\\\WindowsProject1\\\\WindowsProject1.rc'\\).Take\\(200\\).ToArray\\(\\)\\)\")",
+      "Bash(iconv -f UTF-8 -t UTF-16LE \"D:/MyWorks/VisualStudio/WindowsProject1/WindowsProject1_utf8.rc\")",
+      "Bash(iconv -f UTF-16LE -t UTF-8 \"D:/MyWorks/VisualStudio/WindowsProject1/WindowsProject1.rc\")",
+      "Bash(msbuild \"D:/MyWorks/VisualStudio/WindowsProject1/WindowsProject1.slnx\" /p:Configuration=Debug /p:Platform=x64)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" \"D:/MyWorks/VisualStudio/WindowsProject1/WindowsProject1.slnx\" /p:Configuration=Debug /p:Platform=x64)",
+      "Bash(powershell *)",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Program Files \\(x86\\)/Microsoft Visual Studio/**)",
+      "Bash(\"C:/Program Files/dotnet/sdk/10.0.301/MSBuild.exe\" \"D:/MyWorks/VisualStudio/WindowsProject1/WindowsProject1.slnx\" /p:Configuration=Debug /p:Platform=x64 /v:minimal)",
+      "Bash(\"C:/Program Files/dotnet/sdk/10.0.301/MSBuild.exe\" -t:Build -p:Configuration=Debug -p:Platform=x64 \"D:\\\\MyWorks\\\\VisualStudio\\\\WindowsProject1\\\\WindowsProject1.vcxproj\")"
+    ]
+  }
+}
