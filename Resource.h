@@ -13,7 +13,12 @@
 #define IDI_WINDOWSPROJECT1			107
 #define IDI_SMALL				108
 #define IDC_WINDOWSPROJECT1			109
+#define IDD_DIR_SELECT			110
 #define IDC_MYICON				2
+#define IDC_DIR_PATH			1002
+#define IDC_BTN_SELECT_DIR		1003
+#define IDC_CHK_SUBDIR			1004
+#define IDC_BTN_START_SCAN		1005
 #ifndef IDC_STATIC
 #define IDC_STATIC				-1
 #endif

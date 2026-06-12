@@ -90,7 +90,7 @@ static std::wstring FormatFileSize(int64_t size)
 // Create database tables if they don't exist
 static void CreateMovieTables()
 {
-	// movie table
+	// movie table (mosaic/resolution have no NOT NULL, processed is new)
 	std::string sql = R"(
 		CREATE TABLE IF NOT EXISTS movie (
 			id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,8 +100,9 @@ static void CreateMovieTables()
 			file_name   VARCHAR(256) NOT NULL,
 			file_suffix VARCHAR(16)  NOT NULL,
 			file_size   BIGINT       NOT NULL DEFAULT 0,
-			mosaic      TINYINT      NOT NULL DEFAULT 1,
-			resolution  INT          NOT NULL DEFAULT 1
+			mosaic      TINYINT,
+			resolution  INT,
+			processed   TINYINT      NOT NULL DEFAULT 0
 		);
 	)";
 	g_database.Execute(sql);
@@ -159,6 +160,14 @@ static void CreateMovieTables()
 		"CREATE INDEX IF NOT EXISTS idx_movie_tag_tag ON movie_tag(tag_id);");
 }
 
+// Migrate database for existing installations (v0.1 -> v0.2)
+static void MigrateDatabase()
+{
+	// Try adding the processed column (ignore error if it already exists)
+	g_database.Execute(
+		"ALTER TABLE movie ADD COLUMN processed TINYINT NOT NULL DEFAULT 0;");
+}
+
 // Initialize database: open connection and create tables
 static void InitDatabase()
 {
@@ -174,6 +183,9 @@ static void InitDatabase()
 
 	// Create table structure
 	CreateMovieTables();
+
+	// Run migration for existing databases
+	MigrateDatabase();
 }
 
 // Get movie tags as comma-separated string
@@ -263,20 +275,29 @@ static void RefreshListView()
 		// Actors
 		std::wstring actors = GetMovieActors(movieId);
 
-		// Mosaic
-		int mosaic = std::stoi(row.at("mosaic"));
-		std::wstring mosaicStr = mosaic == 1 ? L"Yes" : L"No";
-
-		// Resolution
-		int resolution = std::stoi(row.at("resolution"));
-		std::wstring resolutionStr;
-		switch (resolution)
+		// Mosaic (may be NULL)
+		std::wstring mosaicStr = L"-";
+		const std::string& mosaicVal = row.at("mosaic");
+		if (!mosaicVal.empty())
 		{
-		case 1: resolutionStr = L"SD"; break;
-		case 2: resolutionStr = L"720p"; break;
-		case 3: resolutionStr = L"1080p"; break;
-		case 4: resolutionStr = L"4K"; break;
-		default: resolutionStr = std::to_wstring(resolution); break;
+			int mosaic = std::stoi(mosaicVal);
+			mosaicStr = mosaic == 1 ? L"Yes" : L"No";
+		}
+
+		// Resolution (may be NULL)
+		std::wstring resolutionStr = L"-";
+		const std::string& resVal = row.at("resolution");
+		if (!resVal.empty())
+		{
+			int resolution = std::stoi(resVal);
+			switch (resolution)
+			{
+			case 1: resolutionStr = L"SD"; break;
+			case 2: resolutionStr = L"720p"; break;
+			case 3: resolutionStr = L"1080p"; break;
+			case 4: resolutionStr = L"4K"; break;
+			default: resolutionStr = std::to_wstring(resolution); break;
+			}
 		}
 
 		LVITEMW lvi = {};
@@ -354,8 +375,9 @@ static bool IsVideoFile(const std::wstring& ext)
 	return g_videoExtensions.find(ext) != g_videoExtensions.end();
 }
 
-// Scan directory for video files and insert into database
-static int ScanAndInsertMovies(const std::wstring& dirPath)
+// Scan a single directory for video files and insert into database
+// Returns the number of newly inserted records
+static int ScanAndInsertMoviesInDir(const std::wstring& dirPath)
 {
 	// Construct search path
 	std::wstring searchPath = dirPath + L"\\*";
@@ -373,7 +395,7 @@ static int ScanAndInsertMovies(const std::wstring& dirPath)
 		if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0)
 			continue;
 
-		// Skip directories
+		// Skip directories (they are handled separately in recursive mode)
 		if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
 			continue;
 
@@ -400,6 +422,7 @@ static int ScanAndInsertMovies(const std::wstring& dirPath)
 						   static_cast<int64_t>(fd.nFileSizeLow);
 
 		// Check if already exists (by file_path)
+		// Path comes from filesystem scan, not user input, safe to embed in SQL
 		std::string checkSql = "SELECT COUNT(*) AS cnt FROM movie WHERE file_path = '"
 							   + filePath + "';";
 		db::QueryResult result;
@@ -408,10 +431,10 @@ static int ScanAndInsertMovies(const std::wstring& dirPath)
 		if (!result.empty() && result[0]["cnt"] != "0")
 			continue; // Already exists, skip
 
-		// Insert movie record
+		// Insert movie record (mosaic/resolution/processed use defaults: NULL/NULL/0)
 		std::string insertSql = "INSERT INTO movie "
-			"(name, sn, file_path, file_name, file_suffix, file_size, mosaic, resolution) "
-			"VALUES (?, ?, ?, ?, ?, ?, 1, 1);";
+			"(name, sn, file_path, file_name, file_suffix, file_size) "
+			"VALUES (?, ?, ?, ?, ?, ?);";
 		g_database.ExecuteWithParams(insertSql, {
 			fileNameUtf8,   // name: use file name by default
 			"",             // sn: leave empty for manual editing later
@@ -427,6 +450,43 @@ static int ScanAndInsertMovies(const std::wstring& dirPath)
 
 	FindClose(hFind);
 	return inserted;
+}
+
+// Scan directory for video files and insert into database
+// If includeSubdirs is true, recursively scan subdirectories
+static int ScanAndInsertMovies(const std::wstring& dirPath, bool includeSubdirs)
+{
+	int totalInserted = 0;
+
+	// Scan current directory
+	totalInserted += ScanAndInsertMoviesInDir(dirPath);
+
+	// Recursively scan subdirectories if requested
+	if (includeSubdirs)
+	{
+		std::wstring searchPath = dirPath + L"\\*";
+		WIN32_FIND_DATAW fd;
+		HANDLE hFind = FindFirstFileW(searchPath.c_str(), &fd);
+		if (hFind != INVALID_HANDLE_VALUE)
+		{
+			do
+			{
+				if (wcscmp(fd.cFileName, L".") == 0 ||
+					wcscmp(fd.cFileName, L"..") == 0)
+					continue;
+
+				if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+				{
+					std::wstring subDir = dirPath + L"\\" + fd.cFileName;
+					totalInserted += ScanAndInsertMovies(subDir, true);
+				}
+			}
+			while (FindNextFileW(hFind, &fd));
+			FindClose(hFind);
+		}
+	}
+
+	return totalInserted;
 }
 
 // Open directory selection dialog
@@ -503,11 +563,80 @@ static bool ShowOpenDirectoryDialog(HWND hOwner, std::wstring& selectedPath)
 	return SUCCEEDED(hr);
 }
 
+// Directory selection dialog procedure
+static std::wstring g_dlgSelectedPath; // Stores the selected directory path in the dialog
+
+INT_PTR CALLBACK DirSelectDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	UNREFERENCED_PARAMETER(lParam);
+
+	switch (message)
+	{
+	case WM_INITDIALOG:
+		g_dlgSelectedPath.clear();
+		// Set checkbox default: unchecked
+		CheckDlgButton(hDlg, IDC_CHK_SUBDIR, BST_UNCHECKED);
+		return (INT_PTR)TRUE;
+
+	case WM_COMMAND:
+		{
+			int wmId = LOWORD(wParam);
+			switch (wmId)
+			{
+			case IDC_BTN_SELECT_DIR:
+				{
+					std::wstring dirPath;
+					if (ShowOpenDirectoryDialog(hDlg, dirPath))
+					{
+						g_dlgSelectedPath = dirPath;
+						SetDlgItemTextW(hDlg, IDC_DIR_PATH, dirPath.c_str());
+					}
+				}
+				break;
+
+			case IDC_BTN_START_SCAN:
+				{
+					if (g_dlgSelectedPath.empty())
+					{
+						MessageBoxW(hDlg,
+							L"Please select a directory first.",
+							L"Info", MB_ICONINFORMATION);
+						return (INT_PTR)TRUE;
+					}
+
+					// Get checkbox state
+					bool includeSubdirs =
+						(IsDlgButtonChecked(hDlg, IDC_CHK_SUBDIR) == BST_CHECKED);
+
+					// Scan and insert
+					int count = ScanAndInsertMovies(g_dlgSelectedPath, includeSubdirs);
+
+					// Notify user
+					std::wstring msg = L"Scan complete. Added " +
+									   std::to_wstring(count) + L" video files.";
+					MessageBoxW(hDlg, msg.c_str(), L"Info", MB_ICONINFORMATION);
+
+					// Close dialog with IDOK to signal that scanning was done
+					EndDialog(hDlg, IDOK);
+				}
+				break;
+
+			case IDCANCEL:
+				EndDialog(hDlg, IDCANCEL);
+				break;
+			}
+		}
+		break;
+	}
+	return (INT_PTR)FALSE;
+}
+
 // Forward declarations of functions:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK    DirSelectDlgProc(HWND, UINT, WPARAM, LPARAM);
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 					 _In_opt_ HINSTANCE hPrevInstance,
@@ -632,19 +761,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			{
 			case IDM_OPEN_DIR:
 				{
-					std::wstring dirPath;
-					if (ShowOpenDirectoryDialog(hWnd, dirPath))
+					// Open the directory selection dialog
+					// Returns IDOK if scan was performed, IDCANCEL otherwise
+					INT_PTR result = DialogBox(hInst,
+						MAKEINTRESOURCE(IDD_DIR_SELECT), hWnd, DirSelectDlgProc);
+
+					// Refresh ListView if scanning was done
+					if (result == IDOK)
 					{
-						// Scan directory and insert into database
-						int count = ScanAndInsertMovies(dirPath);
-
-						// Refresh ListView
 						RefreshListView();
-
-						// Notify user
-						std::wstring msg = L"Scan complete. Added " +
-										   std::to_wstring(count) + L" video files.";
-						MessageBoxW(hWnd, msg.c_str(), L"Info", MB_ICONINFORMATION);
 					}
 				}
 				break;
