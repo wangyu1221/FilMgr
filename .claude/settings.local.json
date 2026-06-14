@@ -16,7 +16,21 @@
       "Read(//c/Program Files/**)",
       "Read(//c/Program Files \\(x86\\)/Microsoft Visual Studio/**)",
       "Bash(\"C:/Program Files/dotnet/sdk/10.0.301/MSBuild.exe\" \"D:/MyWorks/VisualStudio/WindowsProject1/WindowsProject1.slnx\" /p:Configuration=Debug /p:Platform=x64 /v:minimal)",
-      "Bash(\"C:/Program Files/dotnet/sdk/10.0.301/MSBuild.exe\" -t:Build -p:Configuration=Debug -p:Platform=x64 \"D:\\\\MyWorks\\\\VisualStudio\\\\WindowsProject1\\\\WindowsProject1.vcxproj\")"
+      "Bash(\"C:/Program Files/dotnet/sdk/10.0.301/MSBuild.exe\" -t:Build -p:Configuration=Debug -p:Platform=x64 \"D:\\\\MyWorks\\\\VisualStudio\\\\WindowsProject1\\\\WindowsProject1.vcxproj\")",
+      "Bash(cd /d D:\\\\MyWorks\\\\VisualStudio\\\\WindowsProject1)",
+      "Bash(msbuild WindowsProject1.vcxproj /t:ClCompile /p:Configuration=Debug /p:Platform=Win32 /nologo /v:minimal)",
+      "Bash(C:/Program Files/Microsoft Visual Studio/Installer/vswhere.exe *)",
+      "Bash(env)",
+      "Bash(iconv -f UTF-16 -t UTF-8 WindowsProject1.rc)",
+      "Read(//c/Users/wanggong/AppData/Local/Programs/Python/Python313/**)",
+      "Read(//usr/**)",
+      "Bash(python)",
+      "Bash(PYTHONIOENCODING=utf-8 python)",
+      "Bash(PYTHONIOENCODING=utf-8 python -c ' *)",
+      "Bash(xxd prd/v0.5.1.md)",
+      "Bash(xxd WindowsProject1.cpp)",
+      "Bash(python -c ' *)",
+      "Bash(git clone *)"
     ]
   }
 }

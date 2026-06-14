@@ -72,7 +72,7 @@
   <PropertyGroup Label="UserMacros" />
   <!-- 全局附加包含目录（所有配置共享） -->
   <PropertyGroup>
-    <IncludePath>$(ProjectDir)src\sqlite;$(ProjectDir)src\db;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)src\sqlite;$(ProjectDir)src\db;$(ProjectDir)src;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -145,14 +145,26 @@
   <ItemGroup>
     <ClInclude Include="framework.h" />
     <ClInclude Include="Resource.h" />
+    <ClInclude Include="src\AppUtils.h" />
+    <ClInclude Include="src\ConfigManager.h" />
     <ClInclude Include="src\db\Database.h" />
+    <ClInclude Include="src\DialogProcs.h" />
+    <ClInclude Include="src\ScanManager.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="WindowsProject1.h" />
     <ClInclude Include="src\sqlite\sqlite3.h" />
     <ClInclude Include="src\sqlite\sqlite3ext.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\AppUtils.cpp" />
+    <ClCompile Include="src\ConfigManager.cpp" />
     <ClCompile Include="src\db\Database.cpp" />
+    <ClCompile Include="src\dialogs\AboutDlg.cpp" />
+    <ClCompile Include="src\dialogs\DirSelectDlg.cpp" />
+    <ClCompile Include="src\dialogs\SettingsDlg.cpp" />
+    <ClCompile Include="src\dialogs\EditMovieDlg.cpp" />
+    <ClCompile Include="src\dialogs\FilterDlg.cpp" />
+    <ClCompile Include="src\ScanManager.cpp" />
     <ClCompile Include="src\sqlite\sqlite3.c" />
     <ClCompile Include="WindowsProject1.cpp" />
   </ItemGroup>
