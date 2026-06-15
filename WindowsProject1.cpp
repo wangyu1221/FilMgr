@@ -13,6 +13,8 @@
 #include <commctrl.h>
 #include <shellapi.h>
 #include "rapidjson/document.h"
+#include "rapidjson/writer.h"
+#include "rapidjson/stringbuffer.h"
 #include <string>
 #include <sstream>
 #include <algorithm>
@@ -152,6 +154,11 @@ static std::vector<int>    s_listValid;
 static int  s_sortCol = -1;
 static bool s_sortAsc = true;
 
+// Column visibility
+static std::vector<bool> s_colVisible;        // which of 10 original columns are visible
+static std::vector<int>  s_colDisplayToOrig;  // display index → original column index
+static constexpr int     IDM_COL_BASE = 3000; // WM_COMMAND base for column toggle (3000-3009)
+
 //=============================================================================
 
 static std::wstring GetMovieTags(int64_t movieId)
@@ -205,23 +212,25 @@ void RefreshListView()
     std::sort(movies.begin(), movies.end(),
         [](const std::unordered_map<std::string,std::string>& a,
            const std::unordered_map<std::string,std::string>& b) {
-            if (s_sortCol < 0 || s_sortCol > 11) return false;
-            // Map column index to field name
-            const char* fields[] = {"sn","name","file_path","file_suffix","file_size",
+            if (s_sortCol < 0 || s_sortCol >= (int)s_colDisplayToOrig.size())
+                return false;
+            int origCol = s_colDisplayToOrig[s_sortCol];
+            // Map original column index to field name
+            const char* fields[] = {"name","sn","file_path","file_suffix","file_size",
                                      "resolution","duration","mosaic","",""};
-            const char* f = fields[s_sortCol];
+            const char* f = fields[origCol];
             if (!f || !*f) return false;
             auto ia = a.find(f), ib = b.find(f);
             if (ia == a.end() || ib == b.end()) return false;
             const std::string& va = ia->second;
             const std::string& vb = ib->second;
             bool asc = s_sortAsc;
-            if (s_sortCol == 4 || s_sortCol == 6) { // Size, Duration: numeric
+            if (origCol == 4 || origCol == 6) { // Size, Duration: numeric
                 int64_t na = va.empty() ? 0 : std::stoll(va);
                 int64_t nb = vb.empty() ? 0 : std::stoll(vb);
                 return asc ? na < nb : na > nb;
             }
-            if (s_sortCol == 5) { // Resolution by vertical (*1080)
+            if (origCol == 5) { // Resolution by vertical (*1080)
                 auto getV = [](const std::string& s) -> int {
                     size_t star = s.find('*');
                     if (star == std::string::npos) star = s.find('x');
@@ -340,28 +349,96 @@ void RefreshListView()
             durationStr = buf;
         }
 
+        // Collect all column values by original column index
+        std::wstring colValues[10];
+        colValues[0] = name;       // 片名
+        colValues[1] = sn;         // 番号
+        colValues[2] = filePath;
+        colValues[3] = suffix;
+        colValues[4] = sizeStr;
+        colValues[5] = resolutionStr;
+        colValues[6] = durationStr;
+        colValues[7] = mosaicStr;
+        colValues[8] = actors;
+        colValues[9] = tags;
+
         LVITEMW lvi = {};
         lvi.mask = LVIF_TEXT | LVIF_PARAM;
         lvi.iItem = static_cast<int>(i);
         lvi.iSubItem = 0;
-        lvi.pszText = const_cast<LPWSTR>(sn.c_str());
+        lvi.pszText = const_cast<LPWSTR>(
+            (s_colDisplayToOrig.empty() ? L"" : colValues[s_colDisplayToOrig[0]].c_str()));
         lvi.lParam = static_cast<LPARAM>(movieId);
         int idx = ListView_InsertItem(g_hListView, &lvi);
 
-        ListView_SetItemText(g_hListView, idx, 1, const_cast<LPWSTR>(name.c_str()));
-        ListView_SetItemText(g_hListView, idx, 2, const_cast<LPWSTR>(filePath.c_str()));
-        ListView_SetItemText(g_hListView, idx, 3, const_cast<LPWSTR>(suffix.c_str()));
-        ListView_SetItemText(g_hListView, idx, 4, const_cast<LPWSTR>(sizeStr.c_str()));
-        ListView_SetItemText(g_hListView, idx, 5, const_cast<LPWSTR>(resolutionStr.c_str()));
-        ListView_SetItemText(g_hListView, idx, 6, const_cast<LPWSTR>(durationStr.c_str()));
-        ListView_SetItemText(g_hListView, idx, 7, const_cast<LPWSTR>(mosaicStr.c_str()));
-        ListView_SetItemText(g_hListView, idx, 8, const_cast<LPWSTR>(actors.c_str()));
-        ListView_SetItemText(g_hListView, idx, 9, const_cast<LPWSTR>(tags.c_str()));
+        // Set text for remaining visible columns (skip display col 0)
+        for (size_t di = 1; di < s_colDisplayToOrig.size(); ++di)
+        {
+            int origCol = s_colDisplayToOrig[di];
+            ListView_SetItemText(g_hListView, idx, (int)di,
+                const_cast<LPWSTR>(colValues[origCol].c_str()));
+        }
 
         // Track metadata for custom draw and context menu
         s_listMovieIds.push_back(movieId);
         s_listValid.push_back(valid);
     }
+}
+
+//=============================================================================
+//=============================================================================
+// Column visibility helpers
+//=============================================================================
+
+static void LoadColumnVisibility()
+{
+    s_colVisible.assign(10, true);  // all visible by default
+    std::string json = LoadSetting(g_database, "listview_col");
+    if (!json.empty())
+    {
+        rapidjson::Document doc;
+        doc.Parse(json.c_str());
+        if (doc.IsArray())
+        {
+            s_colVisible.assign(10, false);
+            for (rapidjson::SizeType i = 0; i < doc.Size(); ++i)
+            {
+                if (doc[i].IsInt())
+                {
+                    int col = doc[i].GetInt();
+                    if (col >= 0 && col < 10)
+                        s_colVisible[col] = true;
+                }
+            }
+        }
+    }
+}
+
+static void SaveColumnVisibility()
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+    writer.StartArray();
+    for (int i = 0; i < 10; ++i)
+    {
+        if (s_colVisible[i])
+            writer.Int(i);
+    }
+    writer.EndArray();
+    SaveSetting(g_database, "listview_col", sb.GetString());
+}
+
+static void RebuildColumnMap()
+{
+    s_colDisplayToOrig.clear();
+    for (int i = 0; i < 10; ++i)
+    {
+        if (s_colVisible[i])
+            s_colDisplayToOrig.push_back(i);
+    }
+    // Reset sort state since column indices changed
+    s_sortCol = -1;
+    s_sortAsc = true;
 }
 
 //=============================================================================
@@ -374,8 +451,8 @@ static void SetupListViewColumns(HWND hListView)
         LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
 
     struct { const wchar_t* title; int width; int fmt; } columns[] = {
-        { L"番号",         100, LVCFMT_LEFT },
         { L"片名",         250, LVCFMT_LEFT },
+        { L"番号",         100, LVCFMT_LEFT },
         { L"文件路径",     250, LVCFMT_LEFT },
         { L"格式",         60,  LVCFMT_LEFT },
         { L"大小",         100, LVCFMT_RIGHT },
@@ -389,13 +466,18 @@ static void SetupListViewColumns(HWND hListView)
     LVCOLUMNW lvc = {};
     lvc.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM | LVCF_FMT;
 
-    for (int i = 0; i < _countof(columns); ++i)
+    int displayIdx = 0;
+    int numCols = _countof(columns);
+    for (int i = 0; i < numCols; ++i)
     {
-        lvc.iSubItem = i;
+        if (!s_colVisible[i])
+            continue;
+        lvc.iSubItem = displayIdx;
         lvc.pszText = const_cast<LPWSTR>(columns[i].title);
         lvc.cx = columns[i].width;
         lvc.fmt = columns[i].fmt;
-        ListView_InsertColumn(hListView, i, &lvc);
+        ListView_InsertColumn(hListView, displayIdx, &lvc);
+        ++displayIdx;
     }
 }
 
@@ -416,6 +498,8 @@ INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
             SendMessage(hDlg, WM_SETICON, ICON_SMALL, (LPARAM)hIconSm);
 
             g_hListView = GetDlgItem(hDlg, IDC_LISTVIEW);
+            LoadColumnVisibility();
+            RebuildColumnMap();
             SetupListViewColumns(g_hListView);
         }
         return (INT_PTR)TRUE;
@@ -579,6 +663,23 @@ INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
                     }
                 }
                 break;
+
+            default:
+                // Column visibility toggle from header context menu
+                if (wmId >= IDM_COL_BASE && wmId < IDM_COL_BASE + 10)
+                {
+                    int col = wmId - IDM_COL_BASE;
+                    s_colVisible[col] = !s_colVisible[col];
+                    SaveColumnVisibility();
+                    RebuildColumnMap();
+
+                    // Remove all existing columns
+                    while (ListView_DeleteColumn(g_hListView, 0)) {}
+                    // Rebuild with new visibility
+                    SetupListViewColumns(g_hListView);
+                    RefreshListView();
+                }
+                break;
             }
         }
         return (INT_PTR)TRUE;
@@ -646,6 +747,32 @@ INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
                     RefreshListView();
                 }
             }
+            else
+            {
+                // Header control right-click → column visibility menu
+                HWND hHeader = ListView_GetHeader(g_hListView);
+                if (hHeader && pnmh->hwndFrom == hHeader && pnmh->code == NM_RCLICK)
+                {
+                    const wchar_t* colNames[] = {
+                        L"片名", L"番号", L"文件路径", L"格式", L"大小",
+                        L"分辨率", L"时长", L"码", L"演员", L"标签"
+                    };
+
+                    HMENU hMenu = CreatePopupMenu();
+                    for (int i = 0; i < 10; ++i)
+                    {
+                        UINT flags = MF_STRING | (s_colVisible[i] ? MF_CHECKED : MF_UNCHECKED);
+                        AppendMenuW(hMenu, flags, IDM_COL_BASE + i, colNames[i]);
+                    }
+
+                    // Get cursor position for popup
+                    POINT pt;
+                    GetCursorPos(&pt);
+                    TrackPopupMenu(hMenu, TPM_LEFTALIGN | TPM_RIGHTBUTTON,
+                                   pt.x, pt.y, 0, hDlg, nullptr);
+                    DestroyMenu(hMenu);
+                }
+            }
         }
         break;
 
@@ -680,13 +807,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
     hInst = hInstance;
 
+    InitDatabase();
+
     HWND hDlg = CreateDialogW(hInstance, MAKEINTRESOURCEW(IDD_MAIN), nullptr, MainDlgProc);
     if (!hDlg) return FALSE;
 
     g_hMainWnd = hDlg;
     ShowWindow(hDlg, nCmdShow);
 
-    InitDatabase();
     RefreshListView();
 
     HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_WINDOWSPROJECT1));
