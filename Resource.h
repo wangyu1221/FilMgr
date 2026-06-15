@@ -41,6 +41,7 @@
 #define IDM_CTX_EDIT                    1022
 #define IDM_CTX_RECHECK                 1023
 #define IDM_CTX_DELETE                  1024
+#define IDM_CTX_OPEN_PATH               1037
 #define IDC_BTN_FILTER                  1025
 #define IDC_FILTER_DURATION             1026
 #define IDC_FILTER_MOSAIC               1027

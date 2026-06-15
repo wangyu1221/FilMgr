@@ -132,7 +132,7 @@ int ScanAndInsertMoviesInDir(const std::wstring& dirPath,
         // Update status text with current file
         if (hStatusText)
         {
-            std::wstring status = L"正在扫描: " + fullPath;
+            std::wstring status = fullPath;
             SetWindowTextW(hStatusText, status.c_str());
             UpdateWindow(hStatusText);
         }
@@ -151,13 +151,12 @@ int ScanAndInsertMoviesInDir(const std::wstring& dirPath,
 
         // Insert movie record
         std::string insertSql = "INSERT INTO movie "
-            "(name, sn, file_path, file_name, file_suffix, file_size, resolution, duration) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?);";
+            "(name, sn, file_path, file_suffix, file_size, resolution, duration) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?);";
         g_database.ExecuteWithParams(insertSql, {
             fileNameUtf8,
             "",
             filePath,
-            fileNameUtf8,
             suffixUtf8,
             std::to_string(fileSize),
             probe.resolution,

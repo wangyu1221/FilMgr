@@ -15,6 +15,7 @@
 #include "rapidjson/document.h"
 #include <string>
 #include <sstream>
+#include <algorithm>
 #include <vector>
 
 #pragma comment(lib, "comctl32.lib")
@@ -44,7 +45,6 @@ static void CreateMovieTables()
             name        VARCHAR(256) NOT NULL,
             sn          VARCHAR(32)  NOT NULL DEFAULT '',
             file_path   VARCHAR(256) NOT NULL,
-            file_name   VARCHAR(256) NOT NULL,
             file_suffix VARCHAR(16)  NOT NULL,
             file_size   BIGINT       NOT NULL DEFAULT 0,
             mosaic      TINYINT,
@@ -59,8 +59,7 @@ static void CreateMovieTables()
 
     g_database.Execute(
         "CREATE INDEX IF NOT EXISTS idx_movie_file_path ON movie(file_path);");
-    g_database.Execute(
-        "CREATE INDEX IF NOT EXISTS idx_movie_file_name ON movie(file_name);");
+;
 
     // actor table
     g_database.Execute(R"(
@@ -121,15 +120,23 @@ static void InitDatabase()
     // Load video extensions from database settings
     LoadVideoExtensions(g_database);
 
-    // Check all file paths and update valid column
+    // Check all file paths and update valid column; also normalize backslashes
     db::QueryResult allPaths;
     g_database.ExecuteQuery("SELECT id, file_path FROM movie;", allPaths);
     for (const auto& row : allPaths)
     {
-        int valid = IsFileValid(row.at("file_path")) ? 1 : 0;
+        std::string fp = row.at("file_path");
+        int valid = IsFileValid(fp) ? 1 : 0;
+        // Normalize double backslashes
+        size_t bs = 0;
+        while ((bs = fp.find("\\\\", bs)) != std::string::npos)
+            fp.replace(bs, 2, "\\");
+        auto esc = [](const std::string& s) {
+            std::string o; for (char c : s) { if (c == '\'') o += "''"; else o += c; } return o;
+        };
         g_database.Execute(
             "UPDATE movie SET valid = " + std::to_string(valid) +
-            " WHERE id = " + row.at("id") + ";");
+            ", file_path = '" + esc(fp) + "' WHERE id = " + row.at("id") + ";");
     }
 }
 
@@ -140,6 +147,10 @@ static void InitDatabase()
 // Parallel arrays for list view item metadata (index = list item index)
 static std::vector<int64_t> s_listMovieIds;
 static std::vector<int>    s_listValid;
+
+// Sort state
+static int  s_sortCol = -1;
+static bool s_sortAsc = true;
 
 //=============================================================================
 
@@ -186,9 +197,41 @@ void RefreshListView()
     s_listValid.clear();
 
     db::QueryResult movies;
-    std::string sql = "SELECT id, sn, file_name, file_suffix, file_size, "
-                      "file_path, mosaic, resolution, duration, processed, valid FROM movie ORDER BY id;";
+    std::string sql = "SELECT id, sn, name, file_path, file_suffix, file_size, "
+                      "mosaic, resolution, duration, valid FROM movie;";
     g_database.ExecuteQuery(sql, movies);
+
+    // In-memory sort
+    std::sort(movies.begin(), movies.end(),
+        [](const std::unordered_map<std::string,std::string>& a,
+           const std::unordered_map<std::string,std::string>& b) {
+            if (s_sortCol < 0 || s_sortCol > 11) return false;
+            // Map column index to field name
+            const char* fields[] = {"sn","name","file_path","file_suffix","file_size",
+                                     "resolution","duration","mosaic","",""};
+            const char* f = fields[s_sortCol];
+            if (!f || !*f) return false;
+            auto ia = a.find(f), ib = b.find(f);
+            if (ia == a.end() || ib == b.end()) return false;
+            const std::string& va = ia->second;
+            const std::string& vb = ib->second;
+            bool asc = s_sortAsc;
+            if (s_sortCol == 4 || s_sortCol == 6) { // Size, Duration: numeric
+                int64_t na = va.empty() ? 0 : std::stoll(va);
+                int64_t nb = vb.empty() ? 0 : std::stoll(vb);
+                return asc ? na < nb : na > nb;
+            }
+            if (s_sortCol == 5) { // Resolution by vertical (*1080)
+                auto getV = [](const std::string& s) -> int {
+                    size_t star = s.find('*');
+                    if (star == std::string::npos) star = s.find('x');
+                    return (star != std::string::npos) ? std::atoi(s.c_str() + star + 1) : 0;
+                };
+                int ra = getV(va), rb = getV(vb);
+                return asc ? ra < rb : ra > rb;
+            }
+            return asc ? va < vb : va > vb;
+        });
 
     for (size_t i = 0; i < movies.size(); ++i)
     {
@@ -231,7 +274,8 @@ void RefreshListView()
         }
 
         std::wstring sn = Utf8ToWChar(row.at("sn"));
-        std::wstring fileName = Utf8ToWChar(row.at("file_name"));
+        std::wstring name = Utf8ToWChar(row.at("name"));
+        std::wstring filePath = Utf8ToWChar(row.at("file_path"));
         std::wstring suffix = Utf8ToWChar(row.at("file_suffix"));
 
         int64_t fileSize = std::stoll(row.at("file_size"));
@@ -242,7 +286,6 @@ void RefreshListView()
         const std::string& validVal = row.at("valid");
         if (!validVal.empty())
             valid = std::stoi(validVal);
-        std::wstring validStr = valid != 0 ? L"是" : L"否";
 
         int64_t movieId = std::stoll(row.at("id"));
         std::wstring tags = GetMovieTags(movieId);
@@ -297,11 +340,6 @@ void RefreshListView()
             durationStr = buf;
         }
 
-        std::wstring processedStr = L"否";
-        const std::string& procVal = row.at("processed");
-        if (!procVal.empty() && procVal != "0")
-            processedStr = L"是";
-
         LVITEMW lvi = {};
         lvi.mask = LVIF_TEXT | LVIF_PARAM;
         lvi.iItem = static_cast<int>(i);
@@ -310,16 +348,15 @@ void RefreshListView()
         lvi.lParam = static_cast<LPARAM>(movieId);
         int idx = ListView_InsertItem(g_hListView, &lvi);
 
-        ListView_SetItemText(g_hListView, idx, 1, const_cast<LPWSTR>(fileName.c_str()));
-        ListView_SetItemText(g_hListView, idx, 2, const_cast<LPWSTR>(suffix.c_str()));
-        ListView_SetItemText(g_hListView, idx, 3, const_cast<LPWSTR>(sizeStr.c_str()));
-        ListView_SetItemText(g_hListView, idx, 4, const_cast<LPWSTR>(validStr.c_str()));
-        ListView_SetItemText(g_hListView, idx, 5, const_cast<LPWSTR>(tags.c_str()));
-        ListView_SetItemText(g_hListView, idx, 6, const_cast<LPWSTR>(actors.c_str()));
+        ListView_SetItemText(g_hListView, idx, 1, const_cast<LPWSTR>(name.c_str()));
+        ListView_SetItemText(g_hListView, idx, 2, const_cast<LPWSTR>(filePath.c_str()));
+        ListView_SetItemText(g_hListView, idx, 3, const_cast<LPWSTR>(suffix.c_str()));
+        ListView_SetItemText(g_hListView, idx, 4, const_cast<LPWSTR>(sizeStr.c_str()));
+        ListView_SetItemText(g_hListView, idx, 5, const_cast<LPWSTR>(resolutionStr.c_str()));
+        ListView_SetItemText(g_hListView, idx, 6, const_cast<LPWSTR>(durationStr.c_str()));
         ListView_SetItemText(g_hListView, idx, 7, const_cast<LPWSTR>(mosaicStr.c_str()));
-        ListView_SetItemText(g_hListView, idx, 8, const_cast<LPWSTR>(resolutionStr.c_str()));
-        ListView_SetItemText(g_hListView, idx, 9, const_cast<LPWSTR>(durationStr.c_str()));
-        ListView_SetItemText(g_hListView, idx, 10, const_cast<LPWSTR>(processedStr.c_str()));
+        ListView_SetItemText(g_hListView, idx, 8, const_cast<LPWSTR>(actors.c_str()));
+        ListView_SetItemText(g_hListView, idx, 9, const_cast<LPWSTR>(tags.c_str()));
 
         // Track metadata for custom draw and context menu
         s_listMovieIds.push_back(movieId);
@@ -338,16 +375,15 @@ static void SetupListViewColumns(HWND hListView)
 
     struct { const wchar_t* title; int width; int fmt; } columns[] = {
         { L"番号",         100, LVCFMT_LEFT },
-        { L"文件名",       250, LVCFMT_LEFT },
+        { L"片名",         250, LVCFMT_LEFT },
+        { L"文件路径",     250, LVCFMT_LEFT },
         { L"格式",         60,  LVCFMT_LEFT },
         { L"大小",         100, LVCFMT_RIGHT },
-        { L"有效",         80,  LVCFMT_LEFT },
-        { L"标签",         120, LVCFMT_LEFT },
-        { L"演员",         120, LVCFMT_LEFT },
-        { L"码",           60,  LVCFMT_LEFT },
         { L"分辨率",       80,  LVCFMT_LEFT },
         { L"时长",         65,  LVCFMT_RIGHT },
-        { L"已处理",       80,  LVCFMT_LEFT },
+        { L"码",           60,  LVCFMT_LEFT },
+        { L"演员",         120, LVCFMT_LEFT },
+        { L"标签",         120, LVCFMT_LEFT }
     };
 
     LVCOLUMNW lvc = {};
@@ -436,6 +472,7 @@ INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
                 break;
 
             case IDM_CTX_OPEN:
+            case IDM_CTX_OPEN_PATH:
             case IDM_CTX_EDIT:
             case IDM_CTX_RECHECK:
             case IDM_CTX_DELETE:
@@ -455,6 +492,18 @@ INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
 
                     if (wmId == IDM_CTX_OPEN)
                     {
+                        // Re-check file existence before playing
+                        if (!IsFileValid(filePath))
+                        {
+                            MessageBoxW(hDlg, L"文件不存在，请检查文件路径。", L"提示", MB_OK | MB_ICONWARNING);
+                            g_database.Execute("UPDATE movie SET valid = 0 WHERE id = "
+                                + std::to_string(movieId) + ";");
+                            if (sel < static_cast<int>(s_listValid.size()))
+                                s_listValid[sel] = 0;
+                            InvalidateRect(g_hListView, nullptr, TRUE);
+                            break;
+                        }
+
                         // Read player config JSON via RapidJSON
                         std::string playerCfg = LoadSetting(g_database, "player_config");
                         std::string playerExe;
@@ -498,6 +547,16 @@ INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
                                           params.c_str(), nullptr, SW_SHOWNORMAL);
                         else
                             ShellExecuteW(nullptr, L"open", exePath.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                    }
+                    else if (wmId == IDM_CTX_OPEN_PATH)
+                    {
+                        std::wstring wPath = Utf8ToWChar(filePath);
+                        // Normalize backslashes
+                        size_t bs = 0;
+                        while ((bs = wPath.find(L"\\\\", bs)) != std::wstring::npos)
+                            wPath.replace(bs, 2, L"\\");
+                        std::wstring params = L"/select,\"" + wPath + L"\"";
+                        ShellExecuteW(nullptr, L"open", L"explorer.exe", params.c_str(), nullptr, SW_SHOWNORMAL);
                     }
                     else if (wmId == IDM_CTX_EDIT)
                         DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_EDIT_MOVIE),
@@ -558,6 +617,7 @@ INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
 
                         HMENU hMenu = CreatePopupMenu();
                         AppendMenuW(hMenu, MF_STRING, IDM_CTX_OPEN, L"打开");
+                        AppendMenuW(hMenu, MF_STRING, IDM_CTX_OPEN_PATH, L"打开路径");
                         AppendMenuW(hMenu, MF_STRING, IDM_CTX_EDIT, L"编辑");
                         AppendMenuW(hMenu, MF_STRING, IDM_CTX_RECHECK, L"重新检查");
                         AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
@@ -575,6 +635,15 @@ INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
                     NMITEMACTIVATE* nmia = reinterpret_cast<NMITEMACTIVATE*>(lParam);
                     if (nmia->iItem != -1)
                         SendMessage(hDlg, WM_COMMAND, IDM_CTX_OPEN, 0);
+                }
+                else if (pnmh->code == LVN_COLUMNCLICK)
+                {
+                    NMLISTVIEW* pnlv = reinterpret_cast<NMLISTVIEW*>(lParam);
+                    if (pnlv->iSubItem == s_sortCol)
+                        s_sortAsc = !s_sortAsc;
+                    else
+                        { s_sortCol = pnlv->iSubItem; s_sortAsc = true; }
+                    RefreshListView();
                 }
             }
         }

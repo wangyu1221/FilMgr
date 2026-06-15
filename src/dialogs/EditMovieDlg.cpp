@@ -29,7 +29,7 @@ INT_PTR CALLBACK EditMovieDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM
             state->movieId = movieId;
             SetWindowLongPtr(hDlg, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
 
-            std::string sql = "SELECT id, name, sn, file_path, file_name, "
+            std::string sql = "SELECT id, name, sn, file_path, "
                               "file_suffix, file_size, mosaic, resolution, duration, processed "
                               "FROM movie WHERE id = " + std::to_string(movieId) + ";";
             db::QueryResult result;
@@ -43,7 +43,6 @@ INT_PTR CALLBACK EditMovieDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM
             SetDlgItemTextW(hDlg, IDC_EDIT_NAME, Utf8ToWChar(row.at("name")).c_str());
             SetDlgItemTextW(hDlg, IDC_EDIT_SN, Utf8ToWChar(row.at("sn")).c_str());
             SetDlgItemTextW(hDlg, IDC_EDIT_FILE_PATH, Utf8ToWChar(row.at("file_path")).c_str());
-            SetDlgItemTextW(hDlg, IDC_EDIT_FILE_NAME, Utf8ToWChar(row.at("file_name")).c_str());
             SetDlgItemTextW(hDlg, IDC_EDIT_FILE_SUFFIX, Utf8ToWChar(row.at("file_suffix")).c_str());
 
             int64_t fileSize = std::stoll(row.at("file_size"));
@@ -108,8 +107,10 @@ INT_PTR CALLBACK EditMovieDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM
                 std::string sn = WCharToUtf8(buf);
                 GetDlgItemTextW(hDlg, IDC_EDIT_FILE_PATH, buf, 512);
                 std::string filePath = WCharToUtf8(buf);
-                GetDlgItemTextW(hDlg, IDC_EDIT_FILE_NAME, buf, 512);
-                std::string fileName = WCharToUtf8(buf);
+                // Normalize backslashes
+                size_t bs = 0;
+                while ((bs = filePath.find("\\\\", bs)) != std::string::npos)
+                    filePath.replace(bs, 2, "\\");
                 GetDlgItemTextW(hDlg, IDC_EDIT_FILE_SUFFIX, buf, 512);
                 std::string fileSuffix = WCharToUtf8(buf);
 
@@ -150,7 +151,6 @@ INT_PTR CALLBACK EditMovieDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM
                     "UPDATE movie SET name = '" + esc(name) +
                     "', sn = '" + esc(sn) +
                     "', file_path = '" + esc(filePath) +
-                    "', file_name = '" + esc(fileName) +
                     "', file_suffix = '" + esc(fileSuffix) +
                     "', file_size = " + fileSize +
                     ", mosaic = " + std::to_string(mosaic) +
