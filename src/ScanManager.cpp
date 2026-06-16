@@ -85,8 +85,9 @@ bool ShowOpenDirectoryDialog(HWND hOwner, std::wstring& selectedPath)
 }
 
 // Scan a single directory for video files and insert into database
-int ScanAndInsertMoviesInDir(const std::wstring& dirPath,
-                             HWND hStatusText)
+int ScanAndInsertFilmsInDir(const std::wstring& dirPath,
+                             HWND hStatusText,
+                             bool extractSn)
 {
     std::wstring searchPath = dirPath + L"\\*";
 
@@ -138,7 +139,7 @@ int ScanAndInsertMoviesInDir(const std::wstring& dirPath,
         }
 
         // Check if already exists (by file_path)
-        std::string checkSql = "SELECT COUNT(*) AS cnt FROM movie WHERE file_path = '"
+        std::string checkSql = "SELECT COUNT(*) AS cnt FROM film WHERE file_path = '"
                                + filePath + "';";
         db::QueryResult result;
         g_database.ExecuteQuery(checkSql, result);
@@ -149,18 +150,29 @@ int ScanAndInsertMoviesInDir(const std::wstring& dirPath,
         // Probe video file for resolution and duration
         ProbeResult probe = ProbeVideoFile(filePath);
 
-        // Insert movie record
-        std::string insertSql = "INSERT INTO movie "
-            "(name, sn, file_path, file_suffix, file_size, resolution, duration) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?);";
+        // Extract SN from filename (without extension) if enabled
+        std::string sn;
+        if (extractSn)
+        {
+            std::wstring nameWithoutExt = fileName;
+            if (dotPos != std::wstring::npos)
+                nameWithoutExt = fileName.substr(0, dotPos);
+            sn = ExtractSN(nameWithoutExt);
+        }
+
+        // Insert film record
+        std::string insertSql = "INSERT INTO film "
+            "(name, sn, file_path, file_suffix, file_size, resolution, duration, producer) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?);";
         g_database.ExecuteWithParams(insertSql, {
             fileNameUtf8,
-            "",
+            sn,
             filePath,
             suffixUtf8,
             std::to_string(fileSize),
             probe.resolution,
-            std::to_string(probe.durationSec)
+            std::to_string(probe.durationSec),
+            ""
         });
 
         ++inserted;
@@ -172,13 +184,14 @@ int ScanAndInsertMoviesInDir(const std::wstring& dirPath,
 }
 
 // Scan directory recursively
-int ScanAndInsertMovies(const std::wstring& dirPath, bool includeSubdirs,
-                        HWND hStatusText)
+int ScanAndInsertFilms(const std::wstring& dirPath, bool includeSubdirs,
+                        HWND hStatusText,
+                        bool extractSn)
 {
     int totalInserted = 0;
 
     // Scan current directory
-    totalInserted += ScanAndInsertMoviesInDir(dirPath, hStatusText);
+    totalInserted += ScanAndInsertFilmsInDir(dirPath, hStatusText, extractSn);
 
     // Recursively scan subdirectories if requested
     if (includeSubdirs)
@@ -197,7 +210,7 @@ int ScanAndInsertMovies(const std::wstring& dirPath, bool includeSubdirs,
                 if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
                 {
                     std::wstring subDir = dirPath + L"\\" + fd.cFileName;
-                    totalInserted += ScanAndInsertMovies(subDir, true, hStatusText);
+                    totalInserted += ScanAndInsertFilms(subDir, true, hStatusText, extractSn);
                 }
             }
             while (FindNextFileW(hFind, &fd));

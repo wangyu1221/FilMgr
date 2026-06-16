@@ -36,7 +36,9 @@
       "PowerShell(Get-Command *)",
       "PowerShell($vsWhere = \"${env:ProgramFiles\\(x86\\)}\\\\Microsoft Visual Studio\\\\Installer\\\\vswhere.exe\"; if \\(Test-Path $vsWhere\\) { & $vsWhere -latest -property installationPath } else { Write-Output \"vswhere not found\" })",
       "PowerShell($msbuild = \"e:\\\\Program Files\\\\Microsoft Visual Studio\\\\18\\\\Community\\\\MSBuild\\\\Current\\\\Bin\\\\MSBuild.exe\"; if \\(Test-Path $msbuild\\) { & $msbuild \"D:\\\\MyWorks\\\\VisualStudio\\\\WindowsProject1\\\\WindowsProject1.sln\" /p:Configuration=Debug /p:Platform=Win32 /nologo /v:minimal 2>&1 } else { Write-Output \"MSBuild not found at $msbuild\" })",
-      "PowerShell($msbuild = \"e:\\\\Program Files\\\\Microsoft Visual Studio\\\\18\\\\Community\\\\MSBuild\\\\Current\\\\Bin\\\\MSBuild.exe\"; & $msbuild \"D:\\\\MyWorks\\\\VisualStudio\\\\WindowsProject1\\\\WindowsProject1.vcxproj\" /p:Configuration=Debug /p:Platform=Win32 /nologo /v:minimal 2>&1)"
+      "PowerShell($msbuild = \"e:\\\\Program Files\\\\Microsoft Visual Studio\\\\18\\\\Community\\\\MSBuild\\\\Current\\\\Bin\\\\MSBuild.exe\"; & $msbuild \"D:\\\\MyWorks\\\\VisualStudio\\\\WindowsProject1\\\\WindowsProject1.vcxproj\" /p:Configuration=Debug /p:Platform=Win32 /nologo /v:minimal 2>&1)",
+      "PowerShell(Move-Item *)",
+      "Bash(msbuild WindowsProject1.vcxproj /t:ClCompile /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal)"
     ]
   }
 }

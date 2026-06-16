@@ -14,7 +14,7 @@
 #define IDC_WINDOWSPROJECT1             109
 #define IDD_DIR_SELECT                  110
 #define IDD_SETTING                     111
-#define IDD_EDIT_MOVIE                  112
+#define IDD_EDIT_FILM                   112
 #define IDD_FILTER                      113
 #define IDD_MAIN                        114
 #define IDR_MAINFRAME                   128
@@ -42,6 +42,8 @@
 #define IDM_CTX_RECHECK                 1023
 #define IDM_CTX_DELETE                  1024
 #define IDM_CTX_OPEN_PATH               1037
+#define IDC_EDIT_PRODUCER               1038
+#define IDC_CHK_EXTRACT_SN              1039
 #define IDC_BTN_FILTER                  1025
 #define IDC_FILTER_DURATION             1026
 #define IDC_FILTER_MOSAIC               1027

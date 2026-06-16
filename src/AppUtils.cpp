@@ -2,6 +2,8 @@
 #include <windows.h>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <regex>
 
 std::string GetExeDirectory()
 {
@@ -66,6 +68,81 @@ bool IsFileValid(const std::string& filePath)
     DWORD attrs = GetFileAttributesW(wpath.c_str());
     return (attrs != INVALID_FILE_ATTRIBUTES &&
             !(attrs & FILE_ATTRIBUTE_DIRECTORY));
+}
+
+// Extract SN from filename (without extension)
+// Recognizes patterns: 000000-00, XXX-000, FC2PPV-0000000, etc.
+// X = any English letter, 0 = any digit
+// Post-processing: replace _ and space with -; insert - between letters and digits if missing
+std::string ExtractSN(const std::wstring& fileName)
+{
+    // Regex matching all SN formats, ordered from most specific to most general.
+    // The | alternation tries each branch in order at each starting position;
+    // {3,5} is greedy so it prefers the longest letter sequence.
+    static const std::wregex snRegex(
+        L"(FC2-PPV-\\d{5,7})"           // FC2-PPV-0000000
+        L"|(FC2 PPV \\d{5,7})"           // FC2 PPV 0000000
+        L"|(FC2PPV-\\d{5,7})"           // FC2PPV-0000000
+        L"|(\\d{6}(-|_)\\d{3})"           // 000000-000
+        L"|(\\d{6}(-|_)\\d{2})"           // 000000-00
+        L"|([A-Za-z]{5}( |-|_)\\d{4})"   // XXXXX 0000
+        L"|([A-Za-z]{3,5}( |-|_)\\d{3})"    // XXX-000, XXXX-000, XXXXX-000
+        L"|([A-Za-z]{3,5}\\d{3})",   // XXX000, XXXX000, 
+        std::regex_constants::icase
+    );
+
+    std::wsmatch match;
+    if (!std::regex_search(fileName, match, snRegex))
+        return "";
+
+    std::wstring result = match.str();
+
+    // Convert all lowercase English letters to uppercase
+    for (auto& c : result)
+    {
+        if (c >= L'a' && c <= L'z')
+            c = c - L'a' + L'A';
+    }
+
+    // Step 1: Replace underscores and spaces with hyphens
+    for (auto& c : result)
+    {
+        if (c == L'_' || c == L' ')
+            c = L'-';
+    }
+
+    // Step 2: Normalize FC2PPV to FC2-PPV (case-insensitive)
+    {
+        auto toLower = [](wchar_t c) -> wchar_t {
+            return (c >= L'A' && c <= L'Z') ? (c - L'A' + L'a') : c;
+        };
+        std::wstring lower = result;
+        for (auto& c : lower) c = toLower(c);
+        size_t pos = lower.find(L"fc2ppv");
+        if (pos != std::wstring::npos)
+            result.replace(pos, 6, L"FC2-PPV");
+    }
+
+    // Step 3: If no hyphen separator exists, insert '-' between letters and digits
+    if (result.find(L'-') == std::wstring::npos)
+    {
+        auto isAlpha = [](wchar_t c) -> bool {
+            return (c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z');
+        };
+        auto isDigit = [](wchar_t c) -> bool {
+            return c >= L'0' && c <= L'9';
+        };
+        for (size_t i = 0; i + 1 < result.length(); ++i)
+        {
+            if (isAlpha(result[i]) && isDigit(result[i + 1]))
+            {
+                result.insert(i + 1, L"-");
+                break;
+            }
+        }
+    }
+
+    return WCharToUtf8(result);
 }
 
 ProbeResult ProbeVideoFile(const std::string& filePath)

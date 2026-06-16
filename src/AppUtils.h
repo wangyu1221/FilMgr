@@ -29,3 +29,8 @@ struct ProbeResult
 // Probe a video file using ffprobe.exe (expected in the same directory as the exe)
 // Returns resolution string and duration in seconds
 ProbeResult ProbeVideoFile(const std::string& filePath);
+
+// Extract SN (serial number) from a filename (without extension)
+// Recognizes patterns like: 000000-00, XXX-000, FC2PPV-0000000, etc.
+// Returns the matched SN string, or empty string if no pattern matches
+std::string ExtractSN(const std::wstring& fileName);

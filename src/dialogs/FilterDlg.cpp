@@ -52,7 +52,7 @@ INT_PTR CALLBACK FilterDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             int fmtAreaW = rcFmt.right - rcFmt.left - padX * 2;
 
             db::QueryResult formats;
-            g_database.ExecuteQuery("SELECT DISTINCT file_suffix FROM movie ORDER BY file_suffix;", formats);
+            g_database.ExecuteQuery("SELECT DISTINCT file_suffix FROM film ORDER BY file_suffix;", formats);
             for (size_t i = 0; i < formats.size(); ++i)
             {
                 std::string fmt = formats[i]["file_suffix"];
@@ -81,7 +81,7 @@ INT_PTR CALLBACK FilterDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
             int resAreaW = rcRes.right - rcRes.left - padX * 2;
 
             db::QueryResult resolutions;
-            g_database.ExecuteQuery("SELECT DISTINCT resolution FROM movie WHERE resolution != '' ORDER BY resolution;", resolutions);
+            g_database.ExecuteQuery("SELECT DISTINCT resolution FROM film WHERE resolution != '' ORDER BY resolution;", resolutions);
             for (size_t i = 0; i < resolutions.size(); ++i)
             {
                 std::string res = resolutions[i]["resolution"];

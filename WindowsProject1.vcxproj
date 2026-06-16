@@ -162,7 +162,7 @@
     <ClCompile Include="src\dialogs\AboutDlg.cpp" />
     <ClCompile Include="src\dialogs\DirSelectDlg.cpp" />
     <ClCompile Include="src\dialogs\SettingsDlg.cpp" />
-    <ClCompile Include="src\dialogs\EditMovieDlg.cpp" />
+    <ClCompile Include="src\dialogs\EditFilmDlg.cpp" />
     <ClCompile Include="src\dialogs\FilterDlg.cpp" />
     <ClCompile Include="src\ScanManager.cpp" />
     <ClCompile Include="src\sqlite\sqlite3.c" />

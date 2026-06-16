@@ -72,9 +72,11 @@ INT_PTR CALLBACK DirSelectDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM
 
                     bool includeSubdirs =
                         (IsDlgButtonChecked(hDlg, IDC_CHK_SUBDIR) == BST_CHECKED);
+                    bool extractSn =
+                        (IsDlgButtonChecked(hDlg, IDC_CHK_EXTRACT_SN) == BST_CHECKED);
 
-                    int count = ScanAndInsertMovies(g_dlgSelectedPath, includeSubdirs,
-                        hStatusText);
+                    int count = ScanAndInsertFilms(g_dlgSelectedPath, includeSubdirs,
+                        hStatusText, extractSn);
 
                     SetWindowTextW(hStatusText, L"");
                     EnableWindow(hBtnStart, TRUE);
@@ -83,6 +85,7 @@ INT_PTR CALLBACK DirSelectDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM
                     std::wstring msg = L"扫描完成。新增 " +
                                        std::to_wstring(count) + L" 个视频文件。";
                     MessageBoxW(hDlg, msg.c_str(), L"提示", MB_ICONINFORMATION);
+                    EndDialog(hDlg, IDOK);
                 }
                 break;
 
