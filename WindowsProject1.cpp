@@ -195,6 +195,78 @@ static std::wstring GetFilmActors(int64_t filmId)
     return actors;
 }
 
+// Build display strings for all 11 original columns from a DB row.
+// Also returns the valid flag for the film.
+static int BuildFilmColumnValues(int64_t filmId,
+                                  const std::unordered_map<std::string,std::string>& row,
+                                  std::wstring colValues[11])
+{
+    colValues[0] = Utf8ToWChar(row.at("name"));       // 片名
+    colValues[1] = Utf8ToWChar(row.at("sn"));         // 番号
+    colValues[2] = Utf8ToWChar(row.at("file_path"));
+    colValues[3] = Utf8ToWChar(row.at("file_suffix"));
+
+    int64_t fileSize = std::stoll(row.at("file_size"));
+    colValues[4] = FormatFileSize(fileSize);
+
+    // Resolution
+    std::wstring resolutionStr = L"-";
+    const std::string& resVal = row.at("resolution");
+    if (!resVal.empty())
+    {
+        if (resVal.find('x') != std::string::npos)
+            resolutionStr = Utf8ToWChar(resVal);
+        else
+        {
+            int res = std::stoi(resVal);
+            switch (res)
+            {
+            case 1: resolutionStr = L"SD"; break;
+            case 2: resolutionStr = L"720p"; break;
+            case 3: resolutionStr = L"1080p"; break;
+            case 4: resolutionStr = L"4K"; break;
+            default: resolutionStr = Utf8ToWChar(resVal); break;
+            }
+        }
+    }
+    colValues[5] = resolutionStr;
+
+    // Duration
+    std::wstring durationStr = L"-";
+    const std::string& durVal = row.at("duration");
+    int durSec = durVal.empty() ? 0 : std::stoi(durVal);
+    if (durSec > 0)
+    {
+        int h = durSec / 3600, m = (durSec % 3600) / 60, s = durSec % 60;
+        wchar_t buf[32];
+        if (h > 0) swprintf(buf, 32, L"%d:%02d:%02d", h, m, s);
+        else       swprintf(buf, 32, L"%d:%02d", m, s);
+        durationStr = buf;
+    }
+    colValues[6] = durationStr;
+
+    // Mosaic
+    std::wstring mosaicStr = L"-";
+    const std::string& mosaicVal = row.at("mosaic");
+    if (!mosaicVal.empty())
+    {
+        int mosaic = std::stoi(mosaicVal);
+        if (mosaic == 1) mosaicStr = L"无";
+        else if (mosaic == 2) mosaicStr = L"有";
+        else if (mosaic == 3) mosaicStr = L"破解或AI";
+    }
+    colValues[7] = mosaicStr;
+
+    colValues[8] = GetFilmActors(filmId);
+    colValues[9] = GetFilmTags(filmId);
+    colValues[10] = Utf8ToWChar(row.count("producer") ? row.at("producer") : "");
+
+    int valid = 1;
+    const std::string& validVal = row.at("valid");
+    if (!validVal.empty()) valid = std::stoi(validVal);
+    return valid;
+}
+
 void RefreshListView()
 {
     if (!g_hListView) return;
@@ -215,7 +287,6 @@ void RefreshListView()
             if (s_sortCol < 0 || s_sortCol >= (int)s_colDisplayToOrig.size())
                 return false;
             int origCol = s_colDisplayToOrig[s_sortCol];
-            // Map original column index to field name
             const char* fields[] = {"name","sn","file_path","file_suffix","file_size",
                                      "resolution","duration","mosaic","","","producer"};
             const char* f = fields[origCol];
@@ -225,12 +296,12 @@ void RefreshListView()
             const std::string& va = ia->second;
             const std::string& vb = ib->second;
             bool asc = s_sortAsc;
-            if (origCol == 4 || origCol == 6) { // Size, Duration: numeric
+            if (origCol == 4 || origCol == 6) {
                 int64_t na = va.empty() ? 0 : std::stoll(va);
                 int64_t nb = vb.empty() ? 0 : std::stoll(vb);
                 return asc ? na < nb : na > nb;
             }
-            if (origCol == 5) { // Resolution by vertical (*1080)
+            if (origCol == 5) {
                 auto getV = [](const std::string& s) -> int {
                     size_t star = s.find('*');
                     if (star == std::string::npos) star = s.find('x');
@@ -249,13 +320,11 @@ void RefreshListView()
         // --- In-memory filtering ---
         if (g_filterState.active)
         {
-            // Format filter (no "不关心" — empty = nothing matches)
             {
                 std::wstring suffixW = Utf8ToWChar(row.at("file_suffix"));
                 if (g_filterState.formats.find(suffixW) == g_filterState.formats.end())
                     continue;
             }
-            // Duration filter
             if (g_filterState.durationSel != 0)
             {
                 const std::string& durVal = row.at("duration");
@@ -267,13 +336,11 @@ void RefreshListView()
                 else if (g_filterState.durationSel == 4 && dur >= 7200) match = true;
                 if (!match) continue;
             }
-            // Resolution filter (no "不关心" — empty = nothing matches)
             {
                 const std::string& resVal = row.at("resolution");
                 if (g_filterState.resolutions.find(resVal) == g_filterState.resolutions.end())
                     continue;
             }
-            // Mosaic filter
             if (g_filterState.mosaicSel != 0)
             {
                 const std::string& mosVal = row.at("mosaic");
@@ -282,86 +349,10 @@ void RefreshListView()
             }
         }
 
-        std::wstring sn = Utf8ToWChar(row.at("sn"));
-        std::wstring name = Utf8ToWChar(row.at("name"));
-        std::wstring filePath = Utf8ToWChar(row.at("file_path"));
-        std::wstring suffix = Utf8ToWChar(row.at("file_suffix"));
-
-        int64_t fileSize = std::stoll(row.at("file_size"));
-        std::wstring sizeStr = FormatFileSize(fileSize);
-
-        // Use stored valid column (updated at startup and on re-check)
-        int valid = 1;
-        const std::string& validVal = row.at("valid");
-        if (!validVal.empty())
-            valid = std::stoi(validVal);
-
         int64_t filmId = std::stoll(row.at("id"));
-        std::wstring tags = GetFilmTags(filmId);
-        std::wstring actors = GetFilmActors(filmId);
 
-        std::wstring mosaicStr = L"-";
-        const std::string& mosaicVal = row.at("mosaic");
-        if (!mosaicVal.empty())
-        {
-            int mosaic = std::stoi(mosaicVal);
-            if (mosaic == 1) mosaicStr = L"无";
-            else if (mosaic == 2) mosaicStr = L"有";
-            else if (mosaic == 3) mosaicStr = L"破解或AI";
-        }
-
-        // Resolution is now a string from ffprobe (e.g. "1920x1080"), or empty
-        std::wstring resolutionStr = L"-";
-        const std::string& resVal = row.at("resolution");
-        if (!resVal.empty())
-        {
-            // If it's a legacy integer (1-4), map to display string
-            if (resVal.find('x') != std::string::npos)
-                resolutionStr = Utf8ToWChar(resVal);
-            else
-            {
-                int res = std::stoi(resVal);
-                switch (res)
-                {
-                case 1: resolutionStr = L"SD"; break;
-                case 2: resolutionStr = L"720p"; break;
-                case 3: resolutionStr = L"1080p"; break;
-                case 4: resolutionStr = L"4K"; break;
-                default: resolutionStr = Utf8ToWChar(resVal); break;
-                }
-            }
-        }
-
-        // Duration: seconds -> h:mm:ss or m:ss
-        std::wstring durationStr = L"-";
-        const std::string& durVal = row.at("duration");
-        int durSec = durVal.empty() ? 0 : std::stoi(durVal);
-        if (durSec > 0)
-        {
-            int h = durSec / 3600;
-            int m = (durSec % 3600) / 60;
-            int s = durSec % 60;
-            wchar_t buf[32];
-            if (h > 0)
-                swprintf(buf, 32, L"%d:%02d:%02d", h, m, s);
-            else
-                swprintf(buf, 32, L"%d:%02d", m, s);
-            durationStr = buf;
-        }
-
-        // Collect all column values by original column index
         std::wstring colValues[11];
-        colValues[0] = name;       // 片名
-        colValues[1] = sn;         // 番号
-        colValues[2] = filePath;
-        colValues[3] = suffix;
-        colValues[4] = sizeStr;
-        colValues[5] = resolutionStr;
-        colValues[6] = durationStr;
-        colValues[7] = mosaicStr;
-        colValues[8] = actors;
-        colValues[9] = tags;
-        colValues[10] = Utf8ToWChar(row.count("producer") ? row.at("producer") : "");
+        int valid = BuildFilmColumnValues(filmId, row, colValues);
 
         LVITEMW lvi = {};
         lvi.mask = LVIF_TEXT | LVIF_PARAM;
@@ -372,7 +363,6 @@ void RefreshListView()
         lvi.lParam = static_cast<LPARAM>(filmId);
         int idx = ListView_InsertItem(g_hListView, &lvi);
 
-        // Set text for remaining visible columns (skip display col 0)
         for (size_t di = 1; di < s_colDisplayToOrig.size(); ++di)
         {
             int origCol = s_colDisplayToOrig[di];
@@ -380,10 +370,46 @@ void RefreshListView()
                 const_cast<LPWSTR>(colValues[origCol].c_str()));
         }
 
-        // Track metadata for custom draw and context menu
         s_listFilmIds.push_back(filmId);
         s_listValid.push_back(valid);
     }
+}
+
+// Update a single row in the ListView after edit (no full reload)
+void UpdateListViewItem(int64_t filmId)
+{
+    if (!g_hListView) return;
+
+    // Find the list item index for this filmId
+    int listIdx = -1;
+    for (size_t i = 0; i < s_listFilmIds.size(); ++i)
+    {
+        if (s_listFilmIds[i] == filmId) { listIdx = static_cast<int>(i); break; }
+    }
+    if (listIdx < 0) return;
+
+    // Re-fetch updated data from database
+    std::string sql = "SELECT id, sn, name, file_path, file_suffix, file_size, "
+                      "mosaic, resolution, duration, valid, producer "
+                      "FROM film WHERE id = " + std::to_string(filmId) + ";";
+    db::QueryResult result;
+    g_database.ExecuteQuery(sql, result);
+    if (result.empty()) return;
+
+    std::wstring colValues[11];
+    int valid = BuildFilmColumnValues(filmId, result[0], colValues);
+
+    // Update text for every visible column in-place
+    for (size_t di = 0; di < s_colDisplayToOrig.size(); ++di)
+    {
+        int origCol = s_colDisplayToOrig[di];
+        ListView_SetItemText(g_hListView, listIdx, static_cast<int>(di),
+            const_cast<LPWSTR>(colValues[origCol].c_str()));
+    }
+
+    // Update validity tracking (affects custom-draw text color)
+    if (listIdx < static_cast<int>(s_listValid.size()))
+        s_listValid[listIdx] = valid;
 }
 
 //=============================================================================

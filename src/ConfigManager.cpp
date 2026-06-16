@@ -17,8 +17,8 @@ static const std::set<std::wstring> s_defaultExtensions = {
     L".m2ts", L".ogv",  L".m1v",  L".dat",  L".swf",
 };
 
-// The active set of video extensions
-std::set<std::wstring> g_videoExtensions = s_defaultExtensions;
+// The active set of video extensions (loaded from DB)
+std::set<std::wstring> g_videoExtensions;
 
 std::set<std::wstring> GetDefaultVideoExtensions()
 {
@@ -49,15 +49,16 @@ std::set<std::wstring> ParseExtensionJson(const std::string& json)
     return result;
 }
 
-std::string GenerateExtensionJson(const std::set<std::wstring>& extensions)
+std::string GenerateExtensionJson(const std::set<std::wstring>& allExtensions,
+                                   const std::set<std::wstring>& enabledExtensions)
 {
     rapidjson::StringBuffer sb;
     rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
     writer.StartObject();
-    for (const auto& ext : extensions)
+    for (const auto& ext : allExtensions)
     {
         writer.Key(WCharToUtf8(ext).c_str());
-        writer.Int(1);
+        writer.Int(enabledExtensions.count(ext) ? 1 : 0);
     }
     writer.EndObject();
     return sb.GetString();
@@ -68,23 +69,22 @@ void LoadVideoExtensions(db::Database& db)
     std::string json = LoadSetting(db, "extentions");
     if (json.empty())
     {
-        g_videoExtensions = s_defaultExtensions;
+        // First run: seed DB with all defaults enabled
+        g_videoExtensions = GetDefaultVideoExtensions();
+        SaveVideoExtensions(db, g_videoExtensions);
+        return;
     }
-    else
-    {
-        auto loaded = ParseExtensionJson(json);
-        if (loaded.empty())
-            g_videoExtensions = s_defaultExtensions;
-        else
-            g_videoExtensions = loaded;
-    }
+
+    auto loaded = ParseExtensionJson(json);
+    g_videoExtensions = loaded;
 }
 
-void SaveVideoExtensions(db::Database& db, const std::set<std::wstring>& extensions)
+void SaveVideoExtensions(db::Database& db, const std::set<std::wstring>& enabledExtensions)
 {
-    std::string json = GenerateExtensionJson(extensions);
+    std::set<std::wstring> allExtensions = GetDefaultVideoExtensions();
+    std::string json = GenerateExtensionJson(allExtensions, enabledExtensions);
     SaveSetting(db, "extentions", json);
-    g_videoExtensions = extensions;
+    g_videoExtensions = enabledExtensions;
 }
 
 std::string LoadSetting(db::Database& db, const std::string& key,

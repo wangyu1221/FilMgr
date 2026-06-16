@@ -9,6 +9,7 @@
 extern db::Database g_database;
 extern HWND g_hMainWnd;
 void RefreshListView();
+void UpdateListViewItem(int64_t filmId);
 
 struct EditFilmState
 {
@@ -164,9 +165,10 @@ INT_PTR CALLBACK EditFilmDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
                     " WHERE id = " + std::to_string(state->filmId) + ";";
                 g_database.Execute(updateSql);
 
+                int64_t filmId = state->filmId;
                 delete state;
                 SetWindowLongPtr(hDlg, GWLP_USERDATA, 0);
-                RefreshListView();
+                UpdateListViewItem(filmId);
                 EndDialog(hDlg, IDOK);
             }
             else if (wmId == IDCANCEL)

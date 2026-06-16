@@ -56,9 +56,9 @@ static void Settings_CreateVideoCheckboxes(HWND hDlg)
     std::vector<std::wstring> sorted(allExtensions.begin(), allExtensions.end());
     std::sort(sorted.begin(), sorted.end());
 
-    int colCount = 3;
+    int colCount = 5;
     int rowHeight = 18;
-    int colWidth = 100;
+    int colWidth = 65;
     int startX = 22, startY = 37;
 
     for (size_t i = 0; i < sorted.size(); ++i)

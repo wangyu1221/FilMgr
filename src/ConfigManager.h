@@ -35,6 +35,8 @@ void SaveSetting(db::Database& db, const std::string& key,
 // Only extensions with value=1 are included
 std::set<std::wstring> ParseExtensionJson(const std::string& json);
 
-// Generate extension JSON from a set of extensions
-// Format: {".avi":1,".mp4":1,...}
-std::string GenerateExtensionJson(const std::set<std::wstring>& extensions);
+// Generate extension JSON from the full set of known extensions and the
+// enabled subset.  Enabled extensions get value 1, disabled get value 0.
+// Format: {".avi":1,".mp4":0,".mkv":1,...}
+std::string GenerateExtensionJson(const std::set<std::wstring>& allExtensions,
+                                   const std::set<std::wstring>& enabledExtensions);
