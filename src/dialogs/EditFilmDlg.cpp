@@ -31,7 +31,7 @@ INT_PTR CALLBACK EditFilmDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
             SetWindowLongPtr(hDlg, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
 
             std::string sql = "SELECT id, name, sn, file_path, "
-                              "file_suffix, file_size, mosaic, resolution, duration, processed, producer "
+                              "file_suffix, file_size, mosaic, resolution, duration, producer "
                               "FROM film WHERE id = " + std::to_string(filmId) + ";";
             db::QueryResult result;
             g_database.ExecuteQuery(sql, result);
@@ -73,11 +73,6 @@ INT_PTR CALLBACK EditFilmDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
                 else       swprintf(durBuf, 32, L"%d:%02d", m, s);
                 SetDlgItemTextW(hDlg, IDC_EDIT_DURATION, durBuf);
             }
-
-            // Processed
-            const std::string& procVal = row.at("processed");
-            if (!procVal.empty() && procVal != "0")
-                CheckDlgButton(hDlg, IDC_EDIT_PROCESSED, BST_CHECKED);
 
             if (g_hMainWnd)
             {
@@ -143,8 +138,6 @@ INT_PTR CALLBACK EditFilmDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
                 g_database.ExecuteQuery("SELECT duration FROM film WHERE id = " + std::to_string(state->filmId) + ";", durRes);
                 std::string duration = (!durRes.empty()) ? durRes[0]["duration"] : "0";
 
-                int processed = IsDlgButtonChecked(hDlg, IDC_EDIT_PROCESSED) == BST_CHECKED ? 1 : 0;
-
                 auto esc = [](const std::string& s) -> std::string {
                     std::string out;
                     for (char c : s) { if (c == '\'') out += "''"; else out += c; }
@@ -161,7 +154,6 @@ INT_PTR CALLBACK EditFilmDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
                     ", mosaic = " + std::to_string(mosaic) +
                     ", resolution = '" + esc(resolution) +
                     "', duration = " + duration +
-                    ", processed = " + std::to_string(processed) +
                     " WHERE id = " + std::to_string(state->filmId) + ";";
                 g_database.Execute(updateSql);
 

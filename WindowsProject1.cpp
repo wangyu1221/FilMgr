@@ -40,7 +40,7 @@ HWND g_hMainWnd = nullptr;
 
 static void CreateFilmTables()
 {
-    // film table (mosaic/resolution have no NOT NULL, processed is new)
+    // film table
     std::string sql = R"(
         CREATE TABLE IF NOT EXISTS film (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,7 +53,6 @@ static void CreateFilmTables()
             resolution  VARCHAR(20)  NOT NULL DEFAULT '',
             duration    BIGINT,
             ad          INT,
-            processed   TINYINT      NOT NULL DEFAULT 0,
             valid       TINYINT      NOT NULL DEFAULT 1,
             producer    VARCHAR(32)
         );

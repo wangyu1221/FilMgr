@@ -35,7 +35,6 @@
 #define IDC_EDIT_FILE_SIZE              1016
 #define IDC_EDIT_MOSAIC                 1017
 #define IDC_EDIT_RESOLUTION             1018
-#define IDC_EDIT_PROCESSED              1019
 #define IDC_EDIT_DURATION               1020
 #define IDM_CTX_OPEN                    1021
 #define IDM_CTX_EDIT                    1022
