@@ -143,6 +143,9 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="src\dialogs\MonitorDirDlg.h" />
+    <ClInclude Include="src\dialogs\AddMonitorDirDlg.h" />
+    <ClInclude Include="src\dialogs\ScanningDlg.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="src\AppUtils.h" />
@@ -159,6 +162,9 @@
     <ClCompile Include="src\AppUtils.cpp" />
     <ClCompile Include="src\ConfigManager.cpp" />
     <ClCompile Include="src\db\Database.cpp" />
+    <ClCompile Include="src\dialogs\MonitorDirDlg.cpp" />
+    <ClCompile Include="src\dialogs\AddMonitorDirDlg.cpp" />
+    <ClCompile Include="src\dialogs\ScanningDlg.cpp" />
     <ClCompile Include="src\dialogs\AboutDlg.cpp" />
     <ClCompile Include="src\dialogs\DirSelectDlg.cpp" />
     <ClCompile Include="src\dialogs\SettingsDlg.cpp" />

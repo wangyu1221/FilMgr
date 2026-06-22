@@ -35,6 +35,7 @@
 #define IDC_EDIT_FILE_SIZE              1016
 #define IDC_EDIT_MOSAIC                 1017
 #define IDC_EDIT_RESOLUTION             1018
+#define IDC_EDIT_AD                     1019
 #define IDC_EDIT_DURATION               1020
 #define IDM_CTX_OPEN                    1021
 #define IDM_CTX_EDIT                    1022
@@ -63,6 +64,18 @@
 #define IDC_FILTER_RESOLUTION_START     2200
 #define ID_32771                        32771
 #define IDM_SETTING                     32772
+#define IDM_MONITOR_DIR                 32773
+#define IDD_MONITOR_DIR                 115
+#define IDD_ADD_MONITOR_DIR             116
+#define IDD_SCANNING                    117
+#define IDC_MONITOR_LISTVIEW            1040
+#define IDC_MONITOR_ADD_BTN             1041
+#define IDC_MONITOR_DEL_BTN             1042
+#define IDC_MONITOR_SUBDIR              1043
+#define IDC_ADD_MONITOR_DIR_PATH        1044
+#define IDC_ADD_MONITOR_SELECT_BTN      1045
+#define IDC_ADD_MONITOR_SUBDIR          1046
+#define IDC_SCAN_CUR_PATH               1047
 #define IDC_STATIC                      -1
 
 // Next default values for new objects
@@ -71,7 +84,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        129
-#define _APS_NEXT_COMMAND_VALUE         32773
+#define _APS_NEXT_COMMAND_VALUE         32774
 #define _APS_NEXT_CONTROL_VALUE         1005
 #define _APS_NEXT_SYMED_VALUE           110
 #endif

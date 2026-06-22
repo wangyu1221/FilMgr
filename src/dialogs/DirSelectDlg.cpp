@@ -1,9 +1,11 @@
 ﻿#include "DirSelectDlg.h"
+#include "ScanningDlg.h"
 #include "../../Resource.h"
 #include "../ScanManager.h"
 #include "../db/Database.h"
 
 #include <string>
+#include <unordered_set>
 
 extern db::Database g_database;
 extern HWND g_hMainWnd;
@@ -66,25 +68,35 @@ INT_PTR CALLBACK DirSelectDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM
                         return (INT_PTR)TRUE;
                     }
 
-                    HWND hBtnStart = GetDlgItem(hDlg, IDC_BTN_START_SCAN);
-                    HWND hStatusText = GetDlgItem(hDlg, IDC_SCAN_STATUS);
-                    EnableWindow(hBtnStart, FALSE);
-
                     bool includeSubdirs =
                         (IsDlgButtonChecked(hDlg, IDC_CHK_SUBDIR) == BST_CHECKED);
-                    bool extractSn =
-                        (IsDlgButtonChecked(hDlg, IDC_CHK_EXTRACT_SN) == BST_CHECKED);
 
-                    int count = ScanAndInsertFilms(g_dlgSelectedPath, includeSubdirs,
-                        hStatusText, extractSn);
+                    std::vector<ScanDir> dirs;
+                    dirs.push_back({ g_dlgSelectedPath, includeSubdirs });
 
-                    SetWindowTextW(hStatusText, L"");
-                    EnableWindow(hBtnStart, TRUE);
+                    // Build set of existing file paths for O(1) dedup
+                    std::unordered_set<std::string> existingPaths;
+                    {
+                        db::QueryResult films;
+                        g_database.ExecuteQuery("SELECT file_path FROM film;", films);
+                        for (const auto& row : films)
+                            existingPaths.insert(row.at("file_path"));
+                    }
+
+                    int count = ShowScanningDialog(hDlg, dirs, &existingPaths);
+
                     RefreshListView();
 
-                    std::wstring msg = L"扫描完成。新增 " +
-                                       std::to_wstring(count) + L" 个视频文件。";
-                    MessageBoxW(hDlg, msg.c_str(), L"提示", MB_ICONINFORMATION);
+                    if (count < 0)
+                    {
+                        MessageBoxW(hDlg, L"扫描已取消。", L"提示", MB_ICONINFORMATION);
+                    }
+                    else
+                    {
+                        std::wstring msg = L"扫描完成。新增 " +
+                                           std::to_wstring(count) + L" 个视频文件。";
+                        MessageBoxW(hDlg, msg.c_str(), L"提示", MB_ICONINFORMATION);
+                    }
                     EndDialog(hDlg, IDOK);
                 }
                 break;

@@ -1,6 +1,9 @@
 #pragma once
 
 #include <string>
+#include <atomic>
+#include <mutex>
+#include <unordered_set>
 
 // Forward declaration
 struct HWND__;
@@ -24,4 +27,22 @@ int ScanAndInsertFilmsInDir(const std::wstring& dirPath,
 // extractSn: if true, try to extract SN from filenames
 int ScanAndInsertFilms(const std::wstring& dirPath, bool includeSubdirs,
                         HWND hStatusText = nullptr,
+                        bool extractSn = false);
+
+// Cancel-aware overloads: check cancel flag between files/directories,
+// update currentPath (under pathMutex) with the path currently being scanned.
+// existingPaths: optional set for O(1) dedup; falls back to SQL if nullptr.
+//                Newly inserted paths are added to the set automatically.
+int ScanAndInsertFilmsInDir(const std::wstring& dirPath,
+                             std::atomic<bool>& cancel,
+                             std::wstring& currentPath,
+                             std::mutex& pathMutex,
+                             std::unordered_set<std::string>* existingPaths = nullptr,
+                             bool extractSn = false);
+
+int ScanAndInsertFilms(const std::wstring& dirPath, bool includeSubdirs,
+                        std::atomic<bool>& cancel,
+                        std::wstring& currentPath,
+                        std::mutex& pathMutex,
+                        std::unordered_set<std::string>* existingPaths = nullptr,
                         bool extractSn = false);

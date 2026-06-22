@@ -31,7 +31,7 @@ INT_PTR CALLBACK EditFilmDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
             SetWindowLongPtr(hDlg, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
 
             std::string sql = "SELECT id, name, sn, file_path, "
-                              "file_suffix, file_size, mosaic, resolution, duration, producer "
+                              "file_suffix, file_size, mosaic, resolution, duration, producer, ad "
                               "FROM film WHERE id = " + std::to_string(filmId) + ";";
             db::QueryResult result;
             g_database.ExecuteQuery(sql, result);
@@ -72,6 +72,18 @@ INT_PTR CALLBACK EditFilmDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
                 if (h > 0) swprintf(durBuf, 32, L"%d:%02d:%02d", h, m, s);
                 else       swprintf(durBuf, 32, L"%d:%02d", m, s);
                 SetDlgItemTextW(hDlg, IDC_EDIT_DURATION, durBuf);
+            }
+
+            // AD (advertisement skip offset in seconds)
+            const std::string& adVal = row.at("ad");
+            int adSec = adVal.empty() ? 0 : std::stoi(adVal);
+            if (adSec > 0)
+            {
+                int h = adSec / 3600, m = (adSec % 3600) / 60, s = adSec % 60;
+                wchar_t adBuf[32];
+                if (h > 0) swprintf(adBuf, 32, L"%d:%02d:%02d", h, m, s);
+                else       swprintf(adBuf, 32, L"%d:%02d", m, s);
+                SetDlgItemTextW(hDlg, IDC_EDIT_AD, adBuf);
             }
 
             if (g_hMainWnd)
@@ -138,6 +150,37 @@ INT_PTR CALLBACK EditFilmDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
                 g_database.ExecuteQuery("SELECT duration FROM film WHERE id = " + std::to_string(state->filmId) + ";", durRes);
                 std::string duration = (!durRes.empty()) ? durRes[0]["duration"] : "0";
 
+                // Read AD from edit control, parse time, set NULL if empty
+                std::string ad = "NULL";
+                wchar_t adBuf[32] = {};
+                GetDlgItemTextW(hDlg, IDC_EDIT_AD, adBuf, 32);
+                if (adBuf[0] != L'\0')
+                {
+                    std::wstring adStr(adBuf);
+                    int adSec = 0;
+                    // Parse HH:MM:SS, MM:SS, or plain seconds
+                    size_t colon1 = adStr.find(L':');
+                    size_t colon2 = (colon1 != std::wstring::npos) ? adStr.find(L':', colon1 + 1) : std::wstring::npos;
+                    if (colon2 != std::wstring::npos)
+                    {
+                        int h = std::stoi(adStr.substr(0, colon1));
+                        int m = std::stoi(adStr.substr(colon1 + 1, colon2 - colon1 - 1));
+                        int s = std::stoi(adStr.substr(colon2 + 1));
+                        adSec = h * 3600 + m * 60 + s;
+                    }
+                    else if (colon1 != std::wstring::npos)
+                    {
+                        int m = std::stoi(adStr.substr(0, colon1));
+                        int s = std::stoi(adStr.substr(colon1 + 1));
+                        adSec = m * 60 + s;
+                    }
+                    else
+                    {
+                        adSec = std::stoi(adStr);
+                    }
+                    ad = std::to_string(adSec);
+                }
+
                 auto esc = [](const std::string& s) -> std::string {
                     std::string out;
                     for (char c : s) { if (c == '\'') out += "''"; else out += c; }
@@ -154,6 +197,7 @@ INT_PTR CALLBACK EditFilmDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
                     ", mosaic = " + std::to_string(mosaic) +
                     ", resolution = '" + esc(resolution) +
                     "', duration = " + duration +
+                    ", ad = " + ad +
                     " WHERE id = " + std::to_string(state->filmId) + ";";
                 g_database.Execute(updateSql);
 

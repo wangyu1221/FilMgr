@@ -107,7 +107,14 @@ static void CreateFilmTables()
 
 static void InitDatabase()
 {
-    std::string dbPath = GetExeDirectory() + "\\app.db";
+    // Ensure C:\ProgramData\Oldman\FilMgr directory exists
+    // CreateDirectoryW only creates the last component, so ensure parent exists first
+    CreateDirectoryW(L"C:\\ProgramData\\Oldman", nullptr);
+    const wchar_t* dataDir = L"C:\\ProgramData\\Oldman\\FilMgr";
+    if (GetFileAttributesW(dataDir) == INVALID_FILE_ATTRIBUTES)
+        CreateDirectoryW(dataDir, nullptr);
+
+    std::string dbPath = WCharToUtf8(dataDir) + std::string("\\default.db");
 
     auto status = g_database.Open(dbPath);
     if (status != db::Status::Ok)
@@ -115,6 +122,13 @@ static void InitDatabase()
         MessageBoxW(nullptr, L"数据库打开失败！", L"错误", MB_ICONERROR);
         return;
     }
+
+    // Create setting table if not exists (key-value store)
+    g_database.Execute(
+        "CREATE TABLE IF NOT EXISTS setting ("
+        "    setting_key   VARCHAR(64) NOT NULL PRIMARY KEY,"
+        "    setting_value TEXT"
+        ");");
 
     CreateFilmTables();
 
@@ -612,6 +626,10 @@ INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
                 }
                 break;
 
+            case IDM_MONITOR_DIR:
+                DialogBox(hInst, MAKEINTRESOURCE(IDD_MONITOR_DIR), hDlg, MonitorDirDlgProc);
+                break;
+
             case IDM_ABOUT:
                 DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hDlg, About);
                 break;
@@ -957,6 +975,54 @@ INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
 }
 
 //=============================================================================
+// Auto-scan monitored directories
+//=============================================================================
+
+static int AutoScanMonitorDirs()
+{
+    std::string json = LoadSetting(g_database, "monitor_dirs");
+    if (json.empty()) return 0;
+
+    rapidjson::Document doc;
+    doc.Parse(json.c_str());
+    if (doc.HasParseError() || !doc.IsArray()) return 0;
+
+    std::vector<ScanDir> dirs;
+
+    for (rapidjson::SizeType i = 0; i < doc.Size(); ++i)
+    {
+        if (!doc[i].IsObject()) continue;
+
+        std::wstring dir;
+        bool includeSub = true;
+
+        if (doc[i].HasMember("dir") && doc[i]["dir"].IsString())
+            dir = Utf8ToWChar(doc[i]["dir"].GetString());
+        if (doc[i].HasMember("include_sub") && doc[i]["include_sub"].IsInt())
+            includeSub = (doc[i]["include_sub"].GetInt() != 0);
+
+        if (dir.empty()) continue;
+
+        dirs.push_back({ dir, includeSub });
+    }
+
+    if (dirs.empty()) return 0;
+
+    // Build set of existing file paths for O(1) dedup
+    std::unordered_set<std::string> existingPaths;
+    {
+        db::QueryResult films;
+        g_database.ExecuteQuery("SELECT file_path FROM film;", films);
+        for (const auto& row : films)
+            existingPaths.insert(row.at("file_path"));
+    }
+
+    int totalNew = ShowScanningDialog(g_hMainWnd, dirs, &existingPaths);
+    if (totalNew < 0) totalNew = 0;
+    return totalNew;
+}
+
+//=============================================================================
 // Application entry point
 //=============================================================================
 
@@ -984,6 +1050,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     ShowWindow(hDlg, nCmdShow);
 
     RefreshListView();
+
+    int newFiles = AutoScanMonitorDirs();
+    if (newFiles > 0)
+    {
+        RefreshListView();
+        std::wstring msg = L"已自动扫描并添加 " + std::to_wstring(newFiles) + L" 个新文件。";
+        MessageBoxW(hDlg, msg.c_str(), L"提示", MB_ICONINFORMATION);
+    }
 
     HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_WINDOWSPROJECT1));
 
