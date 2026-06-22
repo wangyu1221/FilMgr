@@ -158,42 +158,26 @@ ProbeResult ProbeVideoFile(const std::string& filePath)
 
     // CWD must be ffprobe's directory (DLL lookup)
     std::wstring ffprobeDir = ffprobePath.substr(0, ffprobePath.find_last_of(L"\\/"));
-    // Convert paths to GBK (936) for ANSI command line
     std::wstring wFilePath = Utf8ToWChar(filePath);
-    int plen = WideCharToMultiByte(936, 0, wFilePath.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    std::string gbkPath(plen, '\0');
-    WideCharToMultiByte(936, 0, wFilePath.c_str(), -1, &gbkPath[0], plen, nullptr, nullptr);
-    while (!gbkPath.empty() && gbkPath.back() == '\0') gbkPath.pop_back();
 
-    int flen = WideCharToMultiByte(936, 0, ffprobePath.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    std::string gbkFfprobe(flen, '\0');
-    WideCharToMultiByte(936, 0, ffprobePath.c_str(), -1, &gbkFfprobe[0], flen, nullptr, nullptr);
-    while (!gbkFfprobe.empty() && gbkFfprobe.back() == '\0') gbkFfprobe.pop_back();
+    // Temp file for ffprobe stderr output (use W variants for path)
+    wchar_t tmpPathW[MAX_PATH], tmpFileW[MAX_PATH];
+    GetTempPathW(MAX_PATH, tmpPathW);
+    GetTempFileNameW(tmpPathW, L"ffp", 0, tmpFileW);
 
-    int dlen = WideCharToMultiByte(936, 0, ffprobeDir.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    std::string gbkDir(dlen, '\0');
-    WideCharToMultiByte(936, 0, ffprobeDir.c_str(), -1, &gbkDir[0], dlen, nullptr, nullptr);
-    while (!gbkDir.empty() && gbkDir.back() == '\0') gbkDir.pop_back();
+    // Build wide-char command — use CreateProcessW to support emoji/Unicode paths
+    std::wstring cmd = L"\"" + ffprobePath + L"\""
+        L" -v error -select_streams v:0 -show_entries stream=width,height"
+        L" -show_entries format=duration -of default=noprint_wrappers=1"
+        L" -i \"" + wFilePath + L"\" -o \"" + tmpFileW + L"\"";
 
-    // Temp file for ffprobe stderr output
-    char tmpPath[MAX_PATH], tmpFile[MAX_PATH];
-    GetTempPathA(MAX_PATH, tmpPath);
-    GetTempFileNameA(tmpPath, "ffp", 0, tmpFile);
-
-    // Build GBK command — run ffprobe directly, no cmd.exe needed
-    std::string cmd = "\"" + gbkFfprobe + "\""
-        " -v error -select_streams v:0 -show_entries stream=width,height"
-        " -show_entries format=duration -of default=noprint_wrappers=1"
-        " -i \"" + gbkPath + "\" -o \"" + std::string(tmpFile) + "\"";
-
-    // Use CreateProcessA with CREATE_NO_WINDOW to hide cmd popup
-    STARTUPINFOA si = {sizeof(si)};
+    STARTUPINFOW si = {sizeof(si)};
     si.dwFlags = STARTF_USESHOWWINDOW;
     si.wShowWindow = SW_HIDE;
     PROCESS_INFORMATION pi = {};
-    if (CreateProcessA(nullptr, &cmd[0], nullptr, nullptr,
+    if (CreateProcessW(nullptr, &cmd[0], nullptr, nullptr,
                        FALSE, CREATE_NO_WINDOW,
-                       nullptr, gbkDir.c_str(), &si, &pi))
+                       nullptr, ffprobeDir.c_str(), &si, &pi))
     {
         WaitForSingleObject(pi.hProcess, 15000);
         CloseHandle(pi.hProcess);
@@ -203,14 +187,14 @@ ProbeResult ProbeVideoFile(const std::string& filePath)
     // Read temp file
     std::string output;
     FILE* fp = nullptr;
-    fopen_s(&fp, tmpFile, "r");
+    _wfopen_s(&fp, tmpFileW, L"r");
     if (fp) {
         char buf[1024];
         while (fgets(buf, sizeof(buf), fp))
             output += buf;
         fclose(fp);
     }
-    DeleteFileA(tmpFile);
+    DeleteFileW(tmpFileW);
 
     // Parse: width=NNN, height=NNN, duration=N.NNNNNN
     int width = 0, height = 0;
