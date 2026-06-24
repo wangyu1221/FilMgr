@@ -43,6 +43,7 @@
 #define IDM_CTX_DELETE                  1024
 #define IDM_CTX_OPEN_PATH               1037
 #define IDC_EDIT_PRODUCER               1038
+#define IDM_CTX_DELETE_INVALID          1048
 #define IDC_CHK_EXTRACT_SN              1039
 #define IDC_BTN_FILTER                  1025
 #define IDC_FILTER_DURATION             1026

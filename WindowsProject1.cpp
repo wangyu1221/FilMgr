@@ -780,7 +780,7 @@ INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
 
                     std::wstring msg;
                     if (selectedIds.size() > 1)
-                        msg = L"删除选中的多个文件？";
+                        msg = L"从列表中删除选中的多个文件记录？";
                     else
                     {
                         std::string pathSql = "SELECT file_path FROM film WHERE id = "
@@ -789,13 +789,44 @@ INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
                         g_database.ExecuteQuery(pathSql, pathResult);
                         std::string filePath;
                         if (!pathResult.empty()) filePath = pathResult[0]["file_path"];
-                        msg = L"删除 \"" + Utf8ToWChar(filePath) + L"\"？";
+                        msg = L"从列表中删除 \"" + Utf8ToWChar(filePath) + L"\"？";
                     }
 
-                    if (MessageBoxW(hDlg, msg.c_str(), L"确认删除", MB_YESNO | MB_ICONWARNING) == IDYES)
+                    if (MessageBoxW(hDlg, msg.c_str(), L"确认从列表中删除", MB_YESNO | MB_ICONWARNING) == IDYES)
                     {
                         for (int64_t filmId : selectedIds)
                             g_database.Execute("DELETE FROM film WHERE id = " + std::to_string(filmId) + ";");
+                        RefreshListView();
+                    }
+                }
+                break;
+
+            case IDM_CTX_DELETE_INVALID:
+                {
+                    // Count invalid files
+                    db::QueryResult invalidFiles;
+                    g_database.ExecuteQuery(
+                        "SELECT id, file_path FROM film WHERE valid = 0;", invalidFiles);
+
+                    if (invalidFiles.empty())
+                    {
+                        MessageBoxW(hDlg, L"没有无效文件记录需要删除。", L"提示", MB_OK | MB_ICONINFORMATION);
+                        break;
+                    }
+
+                    std::wstring msg = L"共有 " + std::to_wstring(invalidFiles.size())
+                        + L" 个无效文件（文件路径不存在）。\n确认从数据库中删除这些记录吗？";
+                    if (MessageBoxW(hDlg, msg.c_str(), L"确认删除无效文件记录",
+                        MB_YESNO | MB_ICONWARNING) == IDYES)
+                    {
+                        g_database.Execute("DELETE FROM film WHERE valid = 0;");
+                        // Also clean up orphaned film_actor and film_tag entries
+                        g_database.Execute(
+                            "DELETE FROM film_actor WHERE film_id NOT IN "
+                            "(SELECT id FROM film);");
+                        g_database.Execute(
+                            "DELETE FROM film_tag WHERE film_id NOT IN "
+                            "(SELECT id FROM film);");
                         RefreshListView();
                     }
                 }
@@ -866,9 +897,11 @@ INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
                         AppendMenuW(hMenu, openFlags, IDM_CTX_OPEN, L"打开");
                         AppendMenuW(hMenu, openFlags, IDM_CTX_OPEN_PATH, L"打开路径");
                         AppendMenuW(hMenu, openFlags, IDM_CTX_EDIT, L"编辑");
-                        AppendMenuW(hMenu, MF_STRING, IDM_CTX_RECHECK, L"重新检查");
                         AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
-                        AppendMenuW(hMenu, MF_STRING, IDM_CTX_DELETE, L"删除");
+                        AppendMenuW(hMenu, MF_STRING, IDM_CTX_DELETE, L"删除选中记录");
+                        AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
+                        AppendMenuW(hMenu, MF_STRING, IDM_CTX_RECHECK, L"重新检查");
+                        AppendMenuW(hMenu, MF_STRING, IDM_CTX_DELETE_INVALID, L"删除无效");
 
                         POINT pt = nmia->ptAction;
                         ClientToScreen(g_hListView, &pt);
@@ -1055,7 +1088,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     if (newFiles > 0)
     {
         RefreshListView();
-        std::wstring msg = L"已自动扫描并添加 " + std::to_wstring(newFiles) + L" 个新文件。";
+        std::wstring msg = L"已自动扫描并添加 " + std::to_wstring(newFiles) + L" 个新文件记录。";
         MessageBoxW(hDlg, msg.c_str(), L"提示", MB_ICONINFORMATION);
     }
 
