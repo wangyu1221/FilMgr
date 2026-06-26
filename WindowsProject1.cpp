@@ -25,6 +25,7 @@
 #define MAX_LOADSTRING 100
 #define IDC_LISTVIEW 1001
 #define FILTER_BAR_HEIGHT 24
+#define LISTVIEW_ROW_HEIGHT 24
 
 // Global variables:
 HINSTANCE hInst;
@@ -54,13 +55,17 @@ static void CreateFilmTables()
             duration    BIGINT,
             ad          INT,
             valid       TINYINT      NOT NULL DEFAULT 1,
-            producer    VARCHAR(32)
+            producer    VARCHAR(32),
+            star        TINYINT
         );
     )";
     g_database.Execute(sql);
 
     g_database.Execute(
         "CREATE INDEX IF NOT EXISTS idx_film_file_path ON film(file_path);");
+
+    // Migration: add star column for existing databases (ignored if already present)
+    g_database.Execute("ALTER TABLE film ADD COLUMN star TINYINT;");
 
     // actor table
     g_database.Execute(R"(
@@ -168,9 +173,9 @@ static int  s_sortCol = -1;
 static bool s_sortAsc = true;
 
 // Column visibility
-static std::vector<bool> s_colVisible;        // which of 11 original columns are visible
+static std::vector<bool> s_colVisible;        // which of 12 original columns are visible
 static std::vector<int>  s_colDisplayToOrig;  // display index → original column index
-static constexpr int     IDM_COL_BASE = 3000; // WM_COMMAND base for column toggle (3000-3010)
+static constexpr int     IDM_COL_BASE = 3000; // WM_COMMAND base for column toggle (3000-3011)
 
 //=============================================================================
 
@@ -208,11 +213,11 @@ static std::wstring GetFilmActors(int64_t filmId)
     return actors;
 }
 
-// Build display strings for all 11 original columns from a DB row.
+// Build display strings for all 12 original columns from a DB row.
 // Also returns the valid flag for the film.
 static int BuildFilmColumnValues(int64_t filmId,
                                   const std::unordered_map<std::string,std::string>& row,
-                                  std::wstring colValues[11])
+                                  std::wstring colValues[12])
 {
     colValues[0] = Utf8ToWChar(row.at("name"));       // 片名
     colValues[1] = Utf8ToWChar(row.at("sn"));         // 番号
@@ -274,6 +279,16 @@ static int BuildFilmColumnValues(int64_t filmId,
     colValues[9] = GetFilmTags(filmId);
     colValues[10] = Utf8ToWChar(row.count("producer") ? row.at("producer") : "");
 
+    // Star rating
+    std::wstring starStr = L"-";
+    const std::string& starVal = row.count("star") ? row.at("star") : "";
+    if (!starVal.empty())
+    {
+        int star = std::stoi(starVal);
+        if (star > 0) starStr = std::wstring(star, L'☆');  // ☆
+    }
+    colValues[11] = starStr;
+
     int valid = 1;
     const std::string& validVal = row.at("valid");
     if (!validVal.empty()) valid = std::stoi(validVal);
@@ -290,7 +305,7 @@ void RefreshListView()
 
     db::QueryResult films;
     std::string sql = "SELECT id, sn, name, file_path, file_suffix, file_size, "
-                      "mosaic, resolution, duration, valid, producer FROM film;";
+                      "mosaic, resolution, duration, valid, producer, star FROM film;";
     g_database.ExecuteQuery(sql, films);
 
     // In-memory sort
@@ -301,7 +316,7 @@ void RefreshListView()
                 return false;
             int origCol = s_colDisplayToOrig[s_sortCol];
             const char* fields[] = {"name","sn","file_path","file_suffix","file_size",
-                                     "resolution","duration","mosaic","","","producer"};
+                                     "resolution","duration","mosaic","","","producer","star"};
             const char* f = fields[origCol];
             if (!f || !*f) return false;
             auto ia = a.find(f), ib = b.find(f);
@@ -364,7 +379,7 @@ void RefreshListView()
 
         int64_t filmId = std::stoll(row.at("id"));
 
-        std::wstring colValues[11];
+        std::wstring colValues[12];
         int valid = BuildFilmColumnValues(filmId, row, colValues);
 
         LVITEMW lvi = {};
@@ -403,13 +418,13 @@ void UpdateListViewItem(int64_t filmId)
 
     // Re-fetch updated data from database
     std::string sql = "SELECT id, sn, name, file_path, file_suffix, file_size, "
-                      "mosaic, resolution, duration, valid, producer "
+                      "mosaic, resolution, duration, valid, producer, star "
                       "FROM film WHERE id = " + std::to_string(filmId) + ";";
     db::QueryResult result;
     g_database.ExecuteQuery(sql, result);
     if (result.empty()) return;
 
-    std::wstring colValues[11];
+    std::wstring colValues[12];
     int valid = BuildFilmColumnValues(filmId, result[0], colValues);
 
     // Update text for every visible column in-place
@@ -432,7 +447,7 @@ void UpdateListViewItem(int64_t filmId)
 
 static void LoadColumnVisibility()
 {
-    s_colVisible.assign(11, true);  // all visible by default
+    s_colVisible.assign(12, true);  // all visible by default
     std::string json = LoadSetting(g_database, "listview_col");
     if (!json.empty())
     {
@@ -440,13 +455,13 @@ static void LoadColumnVisibility()
         doc.Parse(json.c_str());
         if (doc.IsArray())
         {
-            s_colVisible.assign(11, false);
+            s_colVisible.assign(12, false);
             for (rapidjson::SizeType i = 0; i < doc.Size(); ++i)
             {
                 if (doc[i].IsInt())
                 {
                     int col = doc[i].GetInt();
-                    if (col >= 0 && col < 11)
+                    if (col >= 0 && col < 12)
                         s_colVisible[col] = true;
                 }
             }
@@ -459,7 +474,7 @@ static void SaveColumnVisibility()
     rapidjson::StringBuffer sb;
     rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
     writer.StartArray();
-    for (int i = 0; i < 11; ++i)
+    for (int i = 0; i < 12; ++i)
     {
         if (s_colVisible[i])
             writer.Int(i);
@@ -471,7 +486,7 @@ static void SaveColumnVisibility()
 static void RebuildColumnMap()
 {
     s_colDisplayToOrig.clear();
-    for (int i = 0; i < 11; ++i)
+    for (int i = 0; i < 12; ++i)
     {
         if (s_colVisible[i])
             s_colDisplayToOrig.push_back(i);
@@ -484,21 +499,21 @@ static void RebuildColumnMap()
 // Mapping: original column index → film field name
 static const char* s_colFieldNames[] = {
     "name", "sn", "file_path", "file_suffix", "file_size",
-    "resolution", "duration", "mosaic", "actors", "tags", "producer"
+    "resolution", "duration", "mosaic", "actors", "tags", "producer", "star"
 };
 
 // Saved column widths (0 = use default)
-static int s_colWidths[11] = {0};
+static int s_colWidths[12] = {0};
 
 static void LoadColumnWidths()
 {
-    for (int i = 0; i < 11; ++i) s_colWidths[i] = 0;
+    for (int i = 0; i < 12; ++i) s_colWidths[i] = 0;
     std::string json = LoadSetting(g_database, "listview_col_width");
     if (json.empty()) return;
     rapidjson::Document doc;
     doc.Parse(json.c_str());
     if (!doc.IsObject()) return;
-    for (int i = 0; i < 11; ++i)
+    for (int i = 0; i < 12; ++i)
     {
         if (doc.HasMember(s_colFieldNames[i]) && doc[s_colFieldNames[i]].IsInt())
             s_colWidths[i] = doc[s_colFieldNames[i]].GetInt();
@@ -514,7 +529,7 @@ static void SaveColumnWidths()
     rapidjson::StringBuffer sb;
     rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
     writer.StartObject();
-    for (int i = 0; i < 11; ++i)
+    for (int i = 0; i < 12; ++i)
     {
         if (!s_colVisible[i]) continue;
         if (s_colWidths[i] > 0)
@@ -536,6 +551,10 @@ static void SetupListViewColumns(HWND hListView)
     ListView_SetExtendedListViewStyle(hListView,
         LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
 
+    // Set row height via a 1-pixel-wide image list
+    HIMAGELIST hImgList = ImageList_Create(1, LISTVIEW_ROW_HEIGHT, ILC_COLOR32, 0, 1);
+    ListView_SetImageList(hListView, hImgList, LVSIL_SMALL);
+
     struct { const wchar_t* title; int width; int fmt; } columns[] = {
         { L"片名",         250, LVCFMT_LEFT },
         { L"番号",         150, LVCFMT_LEFT },
@@ -547,7 +566,8 @@ static void SetupListViewColumns(HWND hListView)
         { L"码",           60,  LVCFMT_LEFT },
         { L"演员",         120, LVCFMT_LEFT },
         { L"标签",         120, LVCFMT_LEFT },
-        { L"制片商",       100, LVCFMT_LEFT }
+        { L"制片商",       100, LVCFMT_LEFT },
+        { L"评价",         80,  LVCFMT_LEFT }
     };
 
     LVCOLUMNW lvc = {};
@@ -801,6 +821,70 @@ INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
                 }
                 break;
 
+            case IDM_CTX_DELETE_FILE:
+                {
+                    // Collect all selected film IDs
+                    std::vector<int64_t> selectedIds;
+                    int sel = -1;
+                    while ((sel = ListView_GetNextItem(g_hListView, sel, LVNI_SELECTED)) != -1)
+                    {
+                        if (sel >= 0 && sel < static_cast<int>(s_listFilmIds.size()))
+                            selectedIds.push_back(s_listFilmIds[sel]);
+                    }
+                    if (selectedIds.empty()) break;
+
+                    // Build double-null-terminated file path list for SHFileOperationW
+                    std::wstring fileList;
+                    for (int64_t filmId : selectedIds)
+                    {
+                        std::string pathSql = "SELECT file_path FROM film WHERE id = "
+                                              + std::to_string(filmId) + ";";
+                        db::QueryResult pathResult;
+                        g_database.ExecuteQuery(pathSql, pathResult);
+                        if (!pathResult.empty())
+                        {
+                            std::wstring wPath = Utf8ToWChar(pathResult[0]["file_path"]);
+                            if (IsFileValid(pathResult[0]["file_path"]))
+                                fileList += wPath + L'\0';
+                        }
+                    }
+                    if (fileList.empty())
+                    {
+                        MessageBoxW(hDlg, L"没有可删除的磁盘文件。", L"提示", MB_OK | MB_ICONINFORMATION);
+                        break;
+                    }
+                    fileList += L'\0'; // final null terminator
+
+                    std::wstring msg;
+                    if (selectedIds.size() > 1)
+                        msg = L"将选中的 " + std::to_wstring(selectedIds.size()) + L" 个文件移入回收站？";
+                    else
+                        msg = L"将选中的文件移入回收站？";
+
+                    if (MessageBoxW(hDlg, msg.c_str(), L"确认删除磁盘文件", MB_YESNO | MB_ICONWARNING) == IDYES)
+                    {
+                        SHFILEOPSTRUCTW fos = {};
+                        fos.hwnd = hDlg;
+                        fos.wFunc = FO_DELETE;
+                        fos.pFrom = fileList.c_str();
+                        fos.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION;
+
+                        int result = SHFileOperationW(&fos);
+                        if (result == 0 || fos.fAnyOperationsAborted)
+                        {
+                            // Remove DB records for deleted files
+                            for (int64_t filmId : selectedIds)
+                                g_database.Execute("DELETE FROM film WHERE id = " + std::to_string(filmId) + ";");
+                            RefreshListView();
+                        }
+                        else
+                        {
+                            MessageBoxW(hDlg, L"删除文件失败。", L"错误", MB_OK | MB_ICONERROR);
+                        }
+                    }
+                }
+                break;
+
             case IDM_CTX_DELETE_INVALID:
                 {
                     // Count invalid files
@@ -834,7 +918,7 @@ INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
 
             default:
                 // Column visibility toggle from header context menu
-                if (wmId >= IDM_COL_BASE && wmId < IDM_COL_BASE + 11)
+                if (wmId >= IDM_COL_BASE && wmId < IDM_COL_BASE + 12)
                 {
                     int col = wmId - IDM_COL_BASE;
                     s_colVisible[col] = !s_colVisible[col];
@@ -899,6 +983,7 @@ INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
                         AppendMenuW(hMenu, openFlags, IDM_CTX_EDIT, L"编辑");
                         AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
                         AppendMenuW(hMenu, MF_STRING, IDM_CTX_DELETE, L"删除选中记录");
+                        AppendMenuW(hMenu, MF_STRING, IDM_CTX_DELETE_FILE, L"删除磁盘文件");
                         AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
                         AppendMenuW(hMenu, MF_STRING, IDM_CTX_RECHECK, L"重新检查");
                         AppendMenuW(hMenu, MF_STRING, IDM_CTX_DELETE_INVALID, L"删除无效");
@@ -956,11 +1041,11 @@ INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
                     {
                         const wchar_t* colNames[] = {
                             L"片名", L"番号", L"文件路径", L"格式", L"大小",
-                            L"分辨率", L"时长", L"码", L"演员", L"标签", L"制片商"
+                            L"分辨率", L"时长", L"码", L"演员", L"标签", L"制片商", L"评价"
                         };
 
                         HMENU hMenu = CreatePopupMenu();
-                        for (int i = 0; i < 11; ++i)
+                        for (int i = 0; i < 12; ++i)
                         {
                             UINT flags = MF_STRING | (s_colVisible[i] ? MF_CHECKED : MF_UNCHECKED);
                             AppendMenuW(hMenu, flags, IDM_COL_BASE + i, colNames[i]);

@@ -31,7 +31,7 @@ INT_PTR CALLBACK EditFilmDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
             SetWindowLongPtr(hDlg, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
 
             std::string sql = "SELECT id, name, sn, file_path, "
-                              "file_suffix, file_size, mosaic, resolution, duration, producer, ad "
+                              "file_suffix, file_size, mosaic, resolution, duration, producer, ad, star "
                               "FROM film WHERE id = " + std::to_string(filmId) + ";";
             db::QueryResult result;
             g_database.ExecuteQuery(sql, result);
@@ -58,6 +58,15 @@ INT_PTR CALLBACK EditFilmDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
             const std::string& mosaicVal = row.at("mosaic");
             int mosaicIdx = (!mosaicVal.empty()) ? std::stoi(mosaicVal) : 0;
             SendMessageW(hMosaic, CB_SETCURSEL, mosaicIdx, 0);
+
+            // Star combobox
+            HWND hStar = GetDlgItem(hDlg, IDC_EDIT_STAR);
+            const wchar_t* starItems[] = { L"-", L"☆", L"☆☆", L"☆☆☆", L"☆☆☆☆", L"☆☆☆☆☆" };
+            for (int i = 0; i < _countof(starItems); ++i)
+                SendMessageW(hStar, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(starItems[i]));
+            const std::string& starVal = row.count("star") ? row.at("star") : "";
+            int starIdx = (!starVal.empty()) ? std::stoi(starVal) : 0;
+            SendMessageW(hStar, CB_SETCURSEL, starIdx, 0);
 
             // Resolution
             SetDlgItemTextW(hDlg, IDC_EDIT_RESOLUTION, Utf8ToWChar(row.at("resolution")).c_str());
@@ -143,6 +152,11 @@ INT_PTR CALLBACK EditFilmDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
 
                 int mosaic = static_cast<int>(
                     SendMessageW(GetDlgItem(hDlg, IDC_EDIT_MOSAIC), CB_GETCURSEL, 0, 0));
+
+                int starIdx = static_cast<int>(
+                    SendMessageW(GetDlgItem(hDlg, IDC_EDIT_STAR), CB_GETCURSEL, 0, 0));
+                std::string star = (starIdx == 0) ? "NULL" : std::to_string(starIdx);
+
                 GetDlgItemTextW(hDlg, IDC_EDIT_RESOLUTION, buf, 512);
                 std::string resolution = WCharToUtf8(buf);
 
@@ -195,6 +209,7 @@ INT_PTR CALLBACK EditFilmDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
                     "', file_suffix = '" + esc(fileSuffix) +
                     "', file_size = " + fileSize +
                     ", mosaic = " + std::to_string(mosaic) +
+                    ", star = " + star +
                     ", resolution = '" + esc(resolution) +
                     "', duration = " + duration +
                     ", ad = " + ad +

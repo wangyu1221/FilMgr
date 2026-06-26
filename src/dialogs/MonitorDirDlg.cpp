@@ -12,6 +12,8 @@
 #include <vector>
 #include <string>
 
+#define LISTVIEW_ROW_HEIGHT 22
+
 extern db::Database g_database;
 extern HWND g_hMainWnd;
 extern HINSTANCE hInst;
@@ -131,6 +133,10 @@ INT_PTR CALLBACK MonitorDirDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
             // Set ListView style: two columns without visible header, full row select
             ListView_SetExtendedListViewStyle(s_hListView,
                 LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
+
+            // Set row height via a 1-pixel-wide image list
+            HIMAGELIST hImgList = ImageList_Create(1, LISTVIEW_ROW_HEIGHT, ILC_COLOR32, 0, 1);
+            ListView_SetImageList(s_hListView, hImgList, LVSIL_SMALL);
 
             // Insert two columns (no header text)
             LVCOLUMNW lvc = {};

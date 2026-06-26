@@ -40,7 +40,10 @@
       "PowerShell(Move-Item *)",
       "Bash(msbuild WindowsProject1.vcxproj /t:ClCompile /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal)",
       "PowerShell(Get-Content \"D:\\\\MyWorks\\\\VisualStudio\\\\WindowsProject1\\\\WindowsProject1.rc\" -Encoding Unicode | Select-Object -Index \\(135..145\\) | ForEach-Object { $_ })",
-      "PowerShell(Get-Content \"D:\\\\MyWorks\\\\VisualStudio\\\\WindowsProject1\\\\WindowsProject1.rc\" -Encoding Unicode | Select-Object -Index \\(136..146\\) | ForEach-Object { $_ })"
+      "PowerShell(Get-Content \"D:\\\\MyWorks\\\\VisualStudio\\\\WindowsProject1\\\\WindowsProject1.rc\" -Encoding Unicode | Select-Object -Index \\(136..146\\) | ForEach-Object { $_ })",
+      "PowerShell(& \"e:\\\\Program Files\\\\Microsoft Visual Studio\\\\18\\\\Community\\\\MSBuild\\\\Current\\\\Bin\\\\MSBuild.exe\" \"D:\\\\MyWorks\\\\VisualStudio\\\\WindowsProject1\\\\WindowsProject1.sln\" /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal)",
+      "PowerShell(& \"e:\\\\Program Files\\\\Microsoft Visual Studio\\\\18\\\\Community\\\\MSBuild\\\\Current\\\\Bin\\\\MSBuild.exe\" \"D:\\\\MyWorks\\\\VisualStudio\\\\WindowsProject1\\\\WindowsProject1.vcxproj\" /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal)",
+      "PowerShell(& \"e:\\\\Program Files\\\\Microsoft Visual Studio\\\\18\\\\Community\\\\MSBuild\\\\Current\\\\Bin\\\\MSBuild.exe\" \"D:\\\\MyWorks\\\\VisualStudio\\\\WindowsProject1\\\\WindowsProject1.vcxproj\" /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal 2>&1)"
     ]
   }
 }

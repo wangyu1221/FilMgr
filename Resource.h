@@ -34,6 +34,7 @@
 #define IDC_EDIT_FILE_SUFFIX            1015
 #define IDC_EDIT_FILE_SIZE              1016
 #define IDC_EDIT_MOSAIC                 1017
+#define IDC_EDIT_STAR                   1050
 #define IDC_EDIT_RESOLUTION             1018
 #define IDC_EDIT_AD                     1019
 #define IDC_EDIT_DURATION               1020
@@ -44,6 +45,7 @@
 #define IDM_CTX_OPEN_PATH               1037
 #define IDC_EDIT_PRODUCER               1038
 #define IDM_CTX_DELETE_INVALID          1048
+#define IDM_CTX_DELETE_FILE             1049
 #define IDC_CHK_EXTRACT_SN              1039
 #define IDC_BTN_FILTER                  1025
 #define IDC_FILTER_DURATION             1026
