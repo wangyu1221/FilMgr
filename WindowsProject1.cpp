@@ -760,27 +760,16 @@ INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
 
             case IDM_CTX_RECHECK:
                 {
-                    // Collect all selected film IDs
-                    std::vector<int64_t> selectedIds;
-                    int sel = -1;
-                    while ((sel = ListView_GetNextItem(g_hListView, sel, LVNI_SELECTED)) != -1)
-                    {
-                        if (sel >= 0 && sel < static_cast<int>(s_listFilmIds.size()))
-                            selectedIds.push_back(s_listFilmIds[sel]);
-                    }
-                    if (selectedIds.empty()) break;
+                    // Re-check all film file paths
+                    db::QueryResult allFilms;
+                    g_database.ExecuteQuery("SELECT id, file_path FROM film;", allFilms);
 
-                    for (int64_t filmId : selectedIds)
+                    for (const auto& row : allFilms)
                     {
-                        std::string pathSql = "SELECT file_path FROM film WHERE id = "
-                                              + std::to_string(filmId) + ";";
-                        db::QueryResult pathResult;
-                        g_database.ExecuteQuery(pathSql, pathResult);
-                        std::string filePath;
-                        if (!pathResult.empty()) filePath = pathResult[0]["file_path"];
+                        std::string filePath = row.at("file_path");
                         bool exists = IsFileValid(filePath);
                         g_database.Execute("UPDATE film SET valid = " + std::to_string(exists ? 1 : 0)
-                            + " WHERE id = " + std::to_string(filmId) + ";");
+                            + " WHERE id = " + row.at("id") + ";");
                     }
                     RefreshListView();
                 }
@@ -985,7 +974,7 @@ INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
                         AppendMenuW(hMenu, MF_STRING, IDM_CTX_DELETE, L"删除选中记录");
                         AppendMenuW(hMenu, MF_STRING, IDM_CTX_DELETE_FILE, L"删除磁盘文件");
                         AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
-                        AppendMenuW(hMenu, MF_STRING, IDM_CTX_RECHECK, L"重新检查");
+                        AppendMenuW(hMenu, MF_STRING, IDM_CTX_RECHECK, L"重新检查所有文件");
                         AppendMenuW(hMenu, MF_STRING, IDM_CTX_DELETE_INVALID, L"删除无效");
 
                         POINT pt = nmia->ptAction;
