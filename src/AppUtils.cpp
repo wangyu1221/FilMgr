@@ -5,6 +5,8 @@
 #include <cstring>
 #include <regex>
 
+std::wstring g_ffmpegDir;
+
 std::string GetExeDirectory()
 {
     wchar_t path[MAX_PATH];
@@ -151,8 +153,17 @@ ProbeResult ProbeVideoFile(const std::string& filePath)
     result.resolution.clear();
     result.durationSec = 0;
 
-    std::wstring exeDir = Utf8ToWChar(GetExeDirectory());
-    std::wstring ffprobePath = exeDir + L"\\ffmpeg-master-latest-win64-gpl-shared\\bin\\ffprobe.exe";
+    // Determine ffprobe path: use configured ffmpeg dir first, fall back to exe-relative
+    std::wstring ffprobePath;
+    if (!g_ffmpegDir.empty())
+    {
+        ffprobePath = g_ffmpegDir + L"\\ffprobe.exe";
+    }
+    else
+    {
+        std::wstring exeDir = Utf8ToWChar(GetExeDirectory());
+        ffprobePath = exeDir + L"\\ffmpeg-master-latest-win64-gpl-shared\\bin\\ffprobe.exe";
+    }
     if (!IsFileValid(WCharToUtf8(ffprobePath)))
         return result;
 
@@ -223,4 +234,64 @@ ProbeResult ProbeVideoFile(const std::string& filePath)
         result.durationSec = static_cast<int>(duration);
 
     return result;
+}
+
+std::string GetFfmpegVersion()
+{
+    // Determine ffmpeg path
+    std::wstring ffmpegPath;
+    if (!g_ffmpegDir.empty())
+    {
+        ffmpegPath = g_ffmpegDir + L"\\ffmpeg.exe";
+    }
+    else
+    {
+        std::wstring exeDir = Utf8ToWChar(GetExeDirectory());
+        ffmpegPath = exeDir + L"\\ffmpeg-master-latest-win64-gpl-shared\\bin\\ffmpeg.exe";
+    }
+
+    if (!IsFileValid(WCharToUtf8(ffmpegPath)))
+        return "";
+
+    // Temp file for capturing stdout
+    wchar_t tmpPathW[MAX_PATH], tmpFileW[MAX_PATH];
+    GetTempPathW(MAX_PATH, tmpPathW);
+    GetTempFileNameW(tmpPathW, L"ffv", 0, tmpFileW);
+
+    // Use cmd /c so the > redirect works
+    std::wstring cmd = L"cmd /c \"\"" + ffmpegPath + L"\" -version > \"" + tmpFileW + L"\"\"";
+
+    STARTUPINFOW si = {sizeof(si)};
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+    PROCESS_INFORMATION pi = {};
+    // Working directory doesn't matter for cmd /c + redirect, use exe dir
+    std::wstring workDir = Utf8ToWChar(GetExeDirectory());
+    if (CreateProcessW(nullptr, &cmd[0], nullptr, nullptr,
+                       FALSE, CREATE_NO_WINDOW,
+                       nullptr, workDir.c_str(), &si, &pi))
+    {
+        WaitForSingleObject(pi.hProcess, 10000);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+    }
+
+    // Read first line
+    std::string firstLine;
+    FILE* fp = nullptr;
+    _wfopen_s(&fp, tmpFileW, L"r");
+    if (fp)
+    {
+        char buf[512];
+        if (fgets(buf, sizeof(buf), fp))
+            firstLine = buf;
+        fclose(fp);
+    }
+    DeleteFileW(tmpFileW);
+
+    // Trim trailing newlines
+    while (!firstLine.empty() && (firstLine.back() == '\r' || firstLine.back() == '\n'))
+        firstLine.pop_back();
+
+    return firstLine;
 }

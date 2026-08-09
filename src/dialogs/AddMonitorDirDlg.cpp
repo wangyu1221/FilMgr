@@ -3,6 +3,7 @@
 #include "../AppUtils.h"
 #include "../ConfigManager.h"
 #include "../ScanManager.h"
+#include "ScanningDlg.h"
 #include "../db/Database.h"
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"
@@ -14,6 +15,7 @@
 extern db::Database g_database;
 extern HWND g_hMainWnd;
 extern HINSTANCE hInst;
+void RefreshListView();
 
 static std::wstring s_selectedDir;
 
@@ -65,7 +67,7 @@ INT_PTR CALLBACK AddMonitorDirDlgProc(HWND hDlg, UINT message, WPARAM wParam, LP
             case IDC_ADD_MONITOR_SELECT_BTN:
                 {
                     std::wstring dirPath;
-                    if (ShowOpenDirectoryDialog(hDlg, dirPath))
+                    if (ShowOpenDirectoryDialog(hDlg, dirPath, L"请选择要监视的目录"))
                     {
                         s_selectedDir = dirPath;
                         SetDlgItemTextW(hDlg, IDC_ADD_MONITOR_DIR_PATH, dirPath.c_str());
@@ -120,6 +122,22 @@ INT_PTR CALLBACK AddMonitorDirDlgProc(HWND hDlg, UINT message, WPARAM wParam, LP
                     rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
                     doc.Accept(writer);
                     SaveSetting(g_database, "monitor_dirs", sb.GetString());
+
+                    // Immediately scan the new directory
+                    {
+                        // Build set of existing file paths for O(1) dedup
+                        std::unordered_set<std::string> existingPaths;
+                        db::QueryResult films;
+                        g_database.ExecuteQuery("SELECT file_path FROM film;", films);
+                        for (const auto& row : films)
+                            existingPaths.insert(row.at("file_path"));
+
+                        std::vector<ScanDir> dirs;
+                        dirs.push_back({ s_selectedDir, includeSub });
+                        int found = ShowScanningDialog(hDlg, dirs, &existingPaths);
+                        if (found > 0)
+                            RefreshListView();
+                    }
 
                     EndDialog(hDlg, IDOK);
                 }

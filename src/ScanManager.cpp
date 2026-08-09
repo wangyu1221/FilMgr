@@ -11,7 +11,7 @@
 extern db::Database g_database;
 
 // Show system directory picker dialog
-bool ShowOpenDirectoryDialog(HWND hOwner, std::wstring& selectedPath)
+bool ShowOpenDirectoryDialog(HWND hOwner, std::wstring& selectedPath, const wchar_t* title)
 {
     // Initialize COM
     bool comInitialized = SUCCEEDED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED));
@@ -28,7 +28,7 @@ bool ShowOpenDirectoryDialog(HWND hOwner, std::wstring& selectedPath)
 
         BROWSEINFOW bi = {};
         bi.hwndOwner = hOwner;
-        bi.lpszTitle = L"请选择包含视频文件的目录";
+        bi.lpszTitle = title;
         bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
 
         LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
@@ -50,7 +50,7 @@ bool ShowOpenDirectoryDialog(HWND hOwner, std::wstring& selectedPath)
     DWORD dwFlags;
     pDialog->GetOptions(&dwFlags);
     pDialog->SetOptions(dwFlags | FOS_PICKFOLDERS);
-    pDialog->SetTitle(L"请选择包含视频文件的目录");
+    pDialog->SetTitle(title);
 
     hr = pDialog->Show(hOwner);
     if (FAILED(hr))

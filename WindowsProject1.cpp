@@ -11,6 +11,7 @@
 #include "src/DialogProcs.h"
 
 #include <commctrl.h>
+#include <commdlg.h>
 #include <shellapi.h>
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"
@@ -26,6 +27,7 @@
 #define IDC_LISTVIEW 1001
 #define FILTER_BAR_HEIGHT 24
 #define LISTVIEW_ROW_HEIGHT 24
+#define APP_VERSION "0.11.1"
 
 // Global variables:
 HINSTANCE hInst;
@@ -39,6 +41,9 @@ HWND g_hMainWnd = nullptr;
 // Database initialization
 //=============================================================================
 
+static int AutoScanMonitorDirs();
+void RefreshListView();
+
 static void CreateFilmTables()
 {
     // film table
@@ -51,7 +56,7 @@ static void CreateFilmTables()
             file_suffix VARCHAR(16)  NOT NULL,
             file_size   BIGINT       NOT NULL DEFAULT 0,
             mosaic      TINYINT,
-            resolution  VARCHAR(20)  NOT NULL DEFAULT '',
+            resolution  INT,
             duration    BIGINT,
             ad          INT,
             valid       TINYINT      NOT NULL DEFAULT 1,
@@ -110,16 +115,193 @@ static void CreateFilmTables()
         "CREATE INDEX IF NOT EXISTS idx_film_tag_tag ON film_tag(tag_id);");
 }
 
+//=============================================================================
+// Config file helpers — persist current DB path outside the DB itself
+//=============================================================================
+
+static std::string GetConfigFilePath()
+{
+    return GetExeDirectory() + "\\filmgrcfg.json";
+}
+
+static std::string LoadCurrentDbPath_FromFile()
+{
+    std::string configPath = GetConfigFilePath();
+    std::string content;
+    FILE* fp = nullptr;
+    fopen_s(&fp, configPath.c_str(), "r");
+    if (fp)
+    {
+        fseek(fp, 0, SEEK_END);
+        long size = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+        if (size > 0)
+        {
+            content.resize(size);
+            fread(&content[0], 1, size, fp);
+        }
+        fclose(fp);
+    }
+    if (content.empty()) return "";
+
+    rapidjson::Document doc;
+    doc.Parse(content.c_str());
+    if (doc.HasParseError() || !doc.IsObject()) return "";
+    if (doc.HasMember("db_path") && doc["db_path"].IsString())
+        return doc["db_path"].GetString();
+    return "";
+}
+
+static void SaveCurrentDbPath_ToFile(const std::string& dbPath)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+    writer.StartObject();
+    writer.Key("db_path");
+    writer.String(dbPath.c_str());
+    writer.EndObject();
+
+    std::string configPath = GetConfigFilePath();
+    FILE* fp = nullptr;
+    fopen_s(&fp, configPath.c_str(), "w");
+    if (fp)
+    {
+        fwrite(sb.GetString(), 1, sb.GetSize(), fp);
+        fclose(fp);
+    }
+}
+
+//=============================================================================
+// Table structure validation
+//=============================================================================
+
+static bool ValidateTableStructure()
+{
+    struct ExpectedColumn { const char* name; };
+    struct ExpectedTable {
+        const char* name;
+        std::vector<ExpectedColumn> columns;
+    };
+
+    std::vector<ExpectedTable> expected = {
+        {"film", {
+            {"id"}, {"name"}, {"sn"}, {"file_path"}, {"file_suffix"},
+            {"file_size"}, {"mosaic"}, {"resolution"}, {"duration"},
+            {"ad"}, {"valid"}, {"producer"}, {"star"}
+        }},
+        {"actor", {{"id"}, {"name"}}},
+        {"film_actor", {{"id"}, {"film_id"}, {"actor_id"}}},
+        {"tag", {{"id"}, {"name"}}},
+        {"film_tag", {{"id"}, {"film_id"}, {"tag_id"}}},
+        {"setting", {{"setting_key"}, {"setting_value"}}},
+    };
+
+    for (const auto& table : expected)
+    {
+        // Check table exists
+        db::QueryResult result;
+        std::string sql = "SELECT name FROM sqlite_master WHERE type='table' AND name='"
+                        + std::string(table.name) + "';";
+        g_database.ExecuteQuery(sql, result);
+        if (result.empty())
+        {
+            std::wstring msg = L"数据库表结构错误：缺少表 \""
+                             + Utf8ToWChar(table.name) + L"\"。";
+            MessageBoxW(nullptr, msg.c_str(), L"数据库错误", MB_ICONERROR);
+            return false;
+        }
+
+        // Check columns
+        sql = "PRAGMA table_info(" + std::string(table.name) + ");";
+        g_database.ExecuteQuery(sql, result);
+        for (const auto& col : table.columns)
+        {
+            bool found = false;
+            for (const auto& row : result)
+            {
+                if (row.at("name") == col.name)
+                    { found = true; break; }
+            }
+            if (!found)
+            {
+                std::wstring msg = L"数据库表结构错误：表 \""
+                                 + Utf8ToWChar(table.name) + L"\" 缺少列 \""
+                                 + Utf8ToWChar(col.name) + L"\"。";
+                MessageBoxW(nullptr, msg.c_str(), L"数据库错误", MB_ICONERROR);
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+//=============================================================================
+// ffmpeg path initialization
+//=============================================================================
+
+static void InitFfmpegPath(HWND hParent)
+{
+    // Check if ffmpeg directory is configured and valid
+    std::string ffmpegDirUtf8 = LoadSetting(g_database, "ffmpeg_dir", "");
+    bool needPrompt = true;
+    bool wasConfigured = false;
+
+    if (!ffmpegDirUtf8.empty())
+    {
+        wasConfigured = true;
+        std::wstring dir = Utf8ToWChar(ffmpegDirUtf8);
+        std::wstring ffmpegExe = dir + L"\\ffmpeg.exe";
+        std::wstring ffprobeExe = dir + L"\\ffprobe.exe";
+        if (IsFileValid(WCharToUtf8(ffmpegExe)) && IsFileValid(WCharToUtf8(ffprobeExe)))
+        {
+            g_ffmpegDir = dir;
+            needPrompt = false;
+        }
+    }
+
+    if (needPrompt)
+    {
+        MessageBoxW(hParent,
+            wasConfigured ? L"未找到ffmpeg或ffprobe" : L"未配置ffmpeg目录",
+            L"提示", MB_OK | MB_ICONWARNING);
+
+        std::wstring selectedPath;
+        if (ShowOpenDirectoryDialog(hParent, selectedPath, L"请选择ffmpeg所在目录"))
+        {
+            g_ffmpegDir = selectedPath;
+            SaveSetting(g_database, "ffmpeg_dir", WCharToUtf8(selectedPath));
+        }
+    }
+
+}
+
 static void InitDatabase()
 {
-    // Ensure C:\ProgramData\Oldman\FilMgr directory exists
-    // CreateDirectoryW only creates the last component, so ensure parent exists first
-    CreateDirectoryW(L"C:\\ProgramData\\Oldman", nullptr);
-    const wchar_t* dataDir = L"C:\\ProgramData\\Oldman\\FilMgr";
-    if (GetFileAttributesW(dataDir) == INVALID_FILE_ATTRIBUTES)
-        CreateDirectoryW(dataDir, nullptr);
+    // Determine database path: try saved path first, fall back to default
+    std::string savedPath = LoadCurrentDbPath_FromFile();
+    std::string dbPath;
 
-    std::string dbPath = WCharToUtf8(dataDir) + std::string("\\default.db");
+    bool useSaved = false;
+    if (!savedPath.empty())
+    {
+        DWORD attrs = GetFileAttributesW(Utf8ToWChar(savedPath).c_str());
+        if (attrs != INVALID_FILE_ATTRIBUTES)
+        {
+            dbPath = savedPath;
+            useSaved = true;
+        }
+    }
+
+    if (!useSaved)
+    {
+        // Ensure C:\ProgramData\Oldman\FilMgr directory exists
+        CreateDirectoryW(L"C:\\ProgramData\\Oldman", nullptr);
+        const wchar_t* dataDir = L"C:\\ProgramData\\Oldman\\FilMgr";
+        if (GetFileAttributesW(dataDir) == INVALID_FILE_ATTRIBUTES)
+            CreateDirectoryW(dataDir, nullptr);
+
+        dbPath = WCharToUtf8(dataDir) + std::string("\\default.db");
+    }
 
     auto status = g_database.Open(dbPath);
     if (status != db::Status::Ok)
@@ -131,11 +313,45 @@ static void InitDatabase()
     // Create setting table if not exists (key-value store)
     g_database.Execute(
         "CREATE TABLE IF NOT EXISTS setting ("
-        "    setting_key   VARCHAR(64) NOT NULL PRIMARY KEY,"
-        "    setting_value TEXT"
+        "    setting_key   VARCHAR(128) PRIMARY KEY,"
+        "    setting_value TEXT NOT NULL DEFAULT ''"
         ");");
 
+    // Initialize version number
+    {
+        std::string curVersion = LoadSetting(g_database, "exe_version", "");
+        if (curVersion != APP_VERSION)
+            SaveSetting(g_database, "exe_version", APP_VERSION);
+    }
+
+    // Write default listview_col setting if not exists
+    {
+        std::string colSetting = LoadSetting(g_database, "listview_col", "");
+        if (colSetting.empty())
+            SaveSetting(g_database, "listview_col", "[0,2,3,4,5,6,7,8,9,11]");
+    }
+
     CreateFilmTables();
+
+    // Validate table structure
+    if (!ValidateTableStructure())
+        return;
+
+    // Load ffmpeg path from DB (don't prompt yet — main window not created)
+    {
+        std::string ffmpegDirUtf8 = LoadSetting(g_database, "ffmpeg_dir", "");
+        if (!ffmpegDirUtf8.empty())
+        {
+            std::wstring dir = Utf8ToWChar(ffmpegDirUtf8);
+            std::wstring ffmpegExe = dir + L"\\ffmpeg.exe";
+            std::wstring ffprobeExe = dir + L"\\ffprobe.exe";
+            if (IsFileValid(WCharToUtf8(ffmpegExe)) && IsFileValid(WCharToUtf8(ffprobeExe)))
+                g_ffmpegDir = dir;
+        }
+    }
+
+    // Persist current DB path to config file
+    SaveCurrentDbPath_ToFile(dbPath);
 
     // Load video extensions from database settings
     LoadVideoExtensions(g_database);
@@ -158,6 +374,77 @@ static void InitDatabase()
             "UPDATE film SET valid = " + std::to_string(valid) +
             ", file_path = '" + esc(fp) + "' WHERE id = " + row.at("id") + ";");
     }
+}
+
+// Switch to a different database file (used by "新建" and "打开" menu commands)
+static bool SwitchToDatabase(const std::string& newDbPath)
+{
+    g_database.Close();
+
+    auto status = g_database.Open(newDbPath);
+    if (status != db::Status::Ok)
+    {
+        MessageBoxW(nullptr, L"数据库打开失败！", L"错误", MB_ICONERROR);
+        return false;
+    }
+
+    // Create setting and film tables
+    g_database.Execute(
+        "CREATE TABLE IF NOT EXISTS setting ("
+        "    setting_key   VARCHAR(128) PRIMARY KEY,"
+        "    setting_value TEXT NOT NULL DEFAULT ''"
+        ");");
+
+    // Initialize version number
+    {
+        std::string curVersion = LoadSetting(g_database, "exe_version", "");
+        if (curVersion != APP_VERSION)
+            SaveSetting(g_database, "exe_version", APP_VERSION);
+    }
+
+    // Write default listview_col setting if not exists
+    {
+        std::string colSetting = LoadSetting(g_database, "listview_col", "");
+        if (colSetting.empty())
+            SaveSetting(g_database, "listview_col", "[0,2,3,4,5,6,7,8,9,11]");
+    }
+
+    CreateFilmTables();
+
+    // Validate table structure
+    if (!ValidateTableStructure())
+        return false;
+
+    // Persist path
+    SaveCurrentDbPath_ToFile(newDbPath);
+
+    // Reload video extensions from new DB
+    LoadVideoExtensions(g_database);
+
+    // Initialize ffmpeg path (prompt if needed — main window exists)
+    InitFfmpegPath(g_hMainWnd);
+
+    // Update file-path validity in the new database
+    db::QueryResult allPaths;
+    g_database.ExecuteQuery("SELECT id, file_path FROM film;", allPaths);
+    for (const auto& row : allPaths)
+    {
+        std::string fp = row.at("file_path");
+        int valid = IsFileValid(fp) ? 1 : 0;
+        size_t bs = 0;
+        while ((bs = fp.find("\\\\", bs)) != std::string::npos)
+            fp.replace(bs, 2, "\\");
+        auto esc = [](const std::string& s) {
+            std::string o; for (char c : s) { if (c == '\'') o += "''"; else o += c; } return o;
+        };
+        g_database.Execute(
+            "UPDATE film SET valid = " + std::to_string(valid) +
+            ", file_path = '" + esc(fp) + "' WHERE id = " + row.at("id") + ";");
+    }
+
+    RefreshListView();
+
+    return true;
 }
 
 //=============================================================================
@@ -630,6 +917,47 @@ INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
             int wmId = LOWORD(wParam);
             switch (wmId)
             {
+            case IDM_NEW_DB:
+                {
+                    OPENFILENAMEW ofn = {};
+                    wchar_t szFile[MAX_PATH] = L"";
+                    ofn.lStructSize = sizeof(ofn);
+                    ofn.hwndOwner = hDlg;
+                    ofn.lpstrFilter = L"SQLite 数据库文件 (*.db)\0*.db\0\0";
+                    ofn.lpstrFile = szFile;
+                    ofn.nMaxFile = MAX_PATH;
+                    ofn.Flags = OFN_EXPLORER | OFN_OVERWRITEPROMPT | OFN_HIDEREADONLY;
+                    ofn.lpstrDefExt = L"db";
+
+                    if (GetSaveFileNameW(&ofn))
+                    {
+                        std::string newPath = WCharToUtf8(szFile);
+                        // Remove existing file so we start with a clean database
+                        DeleteFileW(szFile);
+                        SwitchToDatabase(newPath);
+                    }
+                }
+                break;
+
+            case IDM_OPEN_DB:
+                {
+                    OPENFILENAMEW ofn = {};
+                    wchar_t szFile[MAX_PATH] = L"";
+                    ofn.lStructSize = sizeof(ofn);
+                    ofn.hwndOwner = hDlg;
+                    ofn.lpstrFilter = L"SQLite 数据库文件 (*.db)\0*.db\0\0";
+                    ofn.lpstrFile = szFile;
+                    ofn.nMaxFile = MAX_PATH;
+                    ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
+
+                    if (GetOpenFileNameW(&ofn))
+                    {
+                        std::string newPath = WCharToUtf8(szFile);
+                        SwitchToDatabase(newPath);
+                    }
+                }
+                break;
+
             case IDM_OPEN_DIR:
                 DialogBox(hInst, MAKEINTRESOURCE(IDD_DIR_SELECT), hDlg, DirSelectDlgProc);
                 break;
@@ -1156,15 +1484,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     g_hMainWnd = hDlg;
     ShowWindow(hDlg, nCmdShow);
 
-    RefreshListView();
+    // Check ffmpeg path and prompt user if not configured
+    InitFfmpegPath(hDlg);
 
-    int newFiles = AutoScanMonitorDirs();
-    if (newFiles > 0)
-    {
-        RefreshListView();
-        std::wstring msg = L"已自动扫描并添加 " + std::to_wstring(newFiles) + L" 个新文件记录。";
-        MessageBoxW(hDlg, msg.c_str(), L"提示", MB_ICONINFORMATION);
-    }
+    RefreshListView();
 
     HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_WINDOWSPROJECT1));
 

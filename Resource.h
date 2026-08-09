@@ -42,6 +42,8 @@
 #define IDM_CTX_EDIT                    1022
 #define IDM_CTX_RECHECK                 1023
 #define IDM_CTX_DELETE                  1024
+#define IDM_NEW_DB                      32774
+#define IDM_OPEN_DB                     32775
 #define IDM_CTX_OPEN_PATH               1037
 #define IDC_EDIT_PRODUCER               1038
 #define IDM_CTX_DELETE_INVALID          1048
@@ -79,6 +81,8 @@
 #define IDC_ADD_MONITOR_SELECT_BTN      1045
 #define IDC_ADD_MONITOR_SUBDIR          1046
 #define IDC_SCAN_CUR_PATH               1047
+#define IDC_ABOUT_VERSION               1051
+#define IDC_ABOUT_FFMPEG                1052
 #define IDC_STATIC                      -1
 
 // Next default values for new objects

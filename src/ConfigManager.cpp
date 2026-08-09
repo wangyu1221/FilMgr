@@ -101,14 +101,29 @@ std::string LoadSetting(db::Database& db, const std::string& key,
     return defaultValue;
 }
 
+static std::string EscapeSqlString(const std::string& s)
+{
+    std::string result;
+    result.reserve(s.size() + 4);
+    for (char c : s)
+    {
+        if (c == '\'') result += "''";
+        else result += c;
+    }
+    return result;
+}
+
 void SaveSetting(db::Database& db, const std::string& key,
                  const std::string& value)
 {
-    // Use INSERT OR REPLACE (UPSERT pattern)
-    std::string sql = "DELETE FROM setting WHERE setting_key = '" + key + "';";
+    std::string escapedKey = EscapeSqlString(key);
+    std::string escapedValue = EscapeSqlString(value);
+
+    // Use DELETE + INSERT (UPSERT pattern)
+    std::string sql = "DELETE FROM setting WHERE setting_key = '" + escapedKey + "';";
     db.Execute(sql);
 
     sql = "INSERT INTO setting (setting_key, setting_value) VALUES ('"
-          + key + "', '" + value + "');";
+          + escapedKey + "', '" + escapedValue + "');";
     db.Execute(sql);
 }

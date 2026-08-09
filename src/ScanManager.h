@@ -10,8 +10,9 @@ struct HWND__;
 typedef HWND__* HWND;
 
 // Open directory selection dialog (system folder picker)
+// title: dialog title text (for both modern and fallback APIs)
 // Returns true if user selected a directory
-bool ShowOpenDirectoryDialog(HWND hOwner, std::wstring& selectedPath);
+bool ShowOpenDirectoryDialog(HWND hOwner, std::wstring& selectedPath, const wchar_t* title);
 
 // Scan a single directory for video files and insert into database
 // hStatusText: optional HWND to display current file path during scan

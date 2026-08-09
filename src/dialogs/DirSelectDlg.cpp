@@ -50,7 +50,7 @@ INT_PTR CALLBACK DirSelectDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM
             case IDC_BTN_SELECT_DIR:
                 {
                     std::wstring dirPath;
-                    if (ShowOpenDirectoryDialog(hDlg, dirPath))
+                    if (ShowOpenDirectoryDialog(hDlg, dirPath, L"请选择包含视频文件的目录"))
                     {
                         g_dlgSelectedPath = dirPath;
                         SetDlgItemTextW(hDlg, IDC_DIR_PATH, dirPath.c_str());
