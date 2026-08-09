@@ -19,12 +19,12 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
             SetDlgItemTextW(hDlg, IDC_ABOUT_VERSION, text.c_str());
 
             // Read ffmpeg version in real-time
-            std::string ffmpegVer = GetFfmpegVersion();
-            if (!ffmpegVer.empty())
-            {
-                std::wstring ffmpegText = Utf8ToWChar(ffmpegVer);
-                SetDlgItemTextW(hDlg, IDC_ABOUT_FFMPEG, ffmpegText.c_str());
-            }
+            //std::string ffmpegVer = GetFfmpegVersion();
+            //if (!ffmpegVer.empty())
+            //{
+            //    std::wstring ffmpegText = Utf8ToWChar(ffmpegVer);
+            //    SetDlgItemTextW(hDlg, IDC_ABOUT_FFMPEG, ffmpegText.c_str());
+            //}
         }
         return (INT_PTR)TRUE;
 
