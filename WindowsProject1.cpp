@@ -69,9 +69,6 @@ static void CreateFilmTables()
     g_database.Execute(
         "CREATE INDEX IF NOT EXISTS idx_film_file_path ON film(file_path);");
 
-    // Migration: add star column for existing databases (ignored if already present)
-    g_database.Execute("ALTER TABLE film ADD COLUMN star TINYINT;");
-
     // actor table
     g_database.Execute(R"(
         CREATE TABLE IF NOT EXISTS actor (
@@ -259,17 +256,39 @@ static void InitFfmpegPath(HWND hParent)
         }
     }
 
-    if (needPrompt)
+    while (needPrompt)
     {
         MessageBoxW(hParent,
-            wasConfigured ? L"未找到ffmpeg或ffprobe" : L"未配置ffmpeg目录",
+            wasConfigured ? L"未找到ffmpeg或ffprobe，请重新选择ffmpeg所在目录。" : L"未配置ffmpeg目录，请选择ffmpeg所在目录。",
             L"提示", MB_OK | MB_ICONWARNING);
 
         std::wstring selectedPath;
-        if (ShowOpenDirectoryDialog(hParent, selectedPath, L"请选择ffmpeg所在目录"))
+        if (!ShowOpenDirectoryDialog(hParent, selectedPath, L"请选择ffmpeg所在目录"))
+        {
+            // User cancelled the dialog
+            break;
+        }
+
+        // Validate that ffmpeg.exe and ffprobe.exe exist in the selected directory
+        std::wstring ffmpegExe = selectedPath + L"\\ffmpeg.exe";
+        std::wstring ffprobeExe = selectedPath + L"\\ffprobe.exe";
+        if (IsFileValid(WCharToUtf8(ffmpegExe)) && IsFileValid(WCharToUtf8(ffprobeExe)))
         {
             g_ffmpegDir = selectedPath;
             SaveSetting(g_database, "ffmpeg_dir", WCharToUtf8(selectedPath));
+            needPrompt = false;
+        }
+        else
+        {
+            int ret = MessageBoxW(hParent,
+                L"所选目录下未找到ffmpeg.exe和ffprobe.exe，是否重新选择？",
+                L"错误", MB_YESNO | MB_ICONERROR);
+            if (ret == IDNO)
+            {
+                PostQuitMessage(0);
+                return;
+            }
+            wasConfigured = true;
         }
     }
 
@@ -328,7 +347,7 @@ static void InitDatabase()
     {
         std::string colSetting = LoadSetting(g_database, "listview_col", "");
         if (colSetting.empty())
-            SaveSetting(g_database, "listview_col", "[0,2,3,4,5,6,7,8,9,11]");
+            SaveSetting(g_database, "listview_col", "[0,2,3,4,5,6,8,9,11]");
     }
 
     CreateFilmTables();

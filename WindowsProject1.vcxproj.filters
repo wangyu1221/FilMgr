@@ -42,6 +42,27 @@
     <ClInclude Include="src\sqlite\sqlite3ext.h">
       <Filter>SQLite</Filter>
     </ClInclude>
+    <ClInclude Include="src\dialogs\MonitorDirDlg.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="src\dialogs\AddMonitorDirDlg.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="src\dialogs\ScanningDlg.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="src\AppUtils.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ConfigManager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="src\DialogProcs.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ScanManager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="WindowsProject1.cpp">
@@ -52,6 +73,39 @@
     </ClCompile>
     <ClCompile Include="src\sqlite\sqlite3.c">
       <Filter>SQLite</Filter>
+    </ClCompile>
+    <ClCompile Include="src\AppUtils.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ConfigManager.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\dialogs\MonitorDirDlg.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\dialogs\AddMonitorDirDlg.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\dialogs\ScanningDlg.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\dialogs\AboutDlg.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\dialogs\DirSelectDlg.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\dialogs\SettingsDlg.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\dialogs\EditFilmDlg.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\dialogs\FilterDlg.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ScanManager.cpp">
+      <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
